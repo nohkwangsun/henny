@@ -78,6 +78,21 @@ Play 에서는 열쇠가 **두 개**로 나뉩니다.
      -storepass '내가정한비밀번호' -keypass '내가정한비밀번호'
    ```
 
+   > **`-storepass` 와 `-keypass` 를 왜 같은 값으로 쓰나?**
+   > 키스토어는 열쇠 여러 개를 담을 수 있는 **상자**입니다.
+   > `-storepass` 는 **상자 자물쇠**, `-keypass` 는 상자 안에 든 **열쇠 하나(별칭 `henny`)의 자물쇠**입니다.
+   > 원래는 따로 걸 수 있지만, 우리가 쓰는 **PKCS12 형식은 둘을 따로 두는 걸 지원하지 않습니다.**
+   > 다른 값을 넣으면 keytool 이 이렇게 경고하고 `-keypass` 를 **무시**합니다:
+   >
+   > ```
+   > Warning: Different store and key passwords not supported for PKCS12 KeyStores.
+   > Ignoring user-specified -keypass value.
+   > ```
+   >
+   > 그래서 **같은 값을 두 번 쓰는 게 맞습니다.** GitHub Secrets 의
+   > `KEYSTORE_STORE_PASSWORD` 와 `KEYSTORE_KEY_PASSWORD` 도 같은 값을 넣으세요.
+   > (Gradle 은 두 값을 각각 요구하기 때문에 항목이 두 개인 것뿐입니다.)
+
 4. base64 문자열로 바꿔 화면에 출력합니다
 
    ```bash
