@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings as AndroidSettings
 import android.widget.Toast
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -38,6 +39,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.henny.checklist.data.Backend
+import com.henny.checklist.data.Child
 import com.henny.checklist.data.Plan
 import com.henny.checklist.data.Repository
 import com.henny.checklist.data.Role
@@ -60,6 +62,8 @@ fun SettingsScreen(
     val requestNotifications = LocalNotificationRequester.current
 
     var addingChild by remember { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf<Child?>(null) }
+    var deleting by remember { mutableStateOf<Child?>(null) }
     var codeFor by remember { mutableStateOf<String?>(null) }
     var pairing by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
@@ -156,7 +160,11 @@ fun SettingsScreen(
                             .padding(vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(Modifier.weight(1f)) {
+                        Column(
+                            Modifier
+                                .weight(1f)
+                                .clickable { renaming = child }
+                        ) {
                             Text(
                                 "${child.emoji} ${child.name}",
                                 style = MaterialTheme.typography.bodyLarge,
@@ -165,12 +173,15 @@ fun SettingsScreen(
                             Text(
                                 text = settings.progressBins[child.id]
                                     ?.takeIf { it.isNotBlank() }
-                                    ?.let { "연결됨" } ?: "저장 공간 없음",
+                                    ?.let { "연결됨 · 눌러서 이름 수정" } ?: "저장 공간 없음 · 눌러서 이름 수정",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                         TextButton(onClick = { codeFor = child.id }) { Text("연결 코드") }
+                        TextButton(onClick = { deleting = child }) {
+                            Text("삭제", color = MaterialTheme.colorScheme.error)
+                        }
                     }
                 }
                 Spacer(Modifier.height(6.dp))
@@ -309,6 +320,36 @@ fun SettingsScreen(
         }
 
         Spacer(Modifier.height(32.dp))
+    }
+
+    renaming?.let { child ->
+        TextPromptDialog(
+            title = "이름 바꾸기",
+            label = "이름",
+            initial = child.name,
+            onConfirm = {
+                repo.renameChild(child.id, it)
+                renaming = null
+            },
+            onDismiss = { renaming = null }
+        )
+    }
+
+    deleting?.let { child ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { deleting = null },
+            title = { Text("${child.name} 삭제") },
+            text = {
+                Text("${child.name}의 할 일, 미션, 알림이 함께 지워집니다. 지금까지의 기록은 남습니다.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    repo.deleteChild(child.id)
+                    deleting = null
+                }) { Text("삭제", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { deleting = null }) { Text("취소") } }
+        )
     }
 
     if (addingChild) {

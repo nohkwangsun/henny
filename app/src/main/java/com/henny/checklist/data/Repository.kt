@@ -263,6 +263,27 @@ class Repository private constructor(private val app: Context) {
         Reminder(newId("r"), childId, 20 * 60, "자기 전 마지막 점검!")
     )
 
+    fun renameChild(childId: String, name: String) = mutatePlan { p ->
+        p.copy(
+            children = p.children.map {
+                if (it.id == childId) it.copy(name = name.trim()) else it
+            }
+        )
+    }
+
+    /** 아이를 지우면 그 아이에게 달린 할 일·미션·알림도 같이 사라진다. */
+    fun deleteChild(childId: String) {
+        mutatePlan { p ->
+            p.copy(
+                children = p.children.filterNot { it.id == childId },
+                routines = p.routines.filterNot { it.childId == childId },
+                missions = p.missions.filterNot { it.childId == childId },
+                reminders = p.reminders.filterNot { it.childId == childId }
+            )
+        }
+        updateSettings { it.copy(progressBins = it.progressBins - childId) }
+    }
+
     fun addRoutine(childId: String, title: String, days: List<Int>, dueMinute: Int?) {
         mutatePlan { p ->
             val order = (p.routines.filter { it.childId == childId }.maxOfOrNull { it.order } ?: 0) + 1
