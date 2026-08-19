@@ -14,7 +14,9 @@
 
 ## 1. APK 받기
 
-구글 플레이로 배포하려면 **[PLAY_STORE.md](PLAY_STORE.md)** 를 보세요. 여기서는 사이드로딩만 설명합니다.
+설치 방법을 고르는 중이라면 **[INSTALL.md](INSTALL.md)** 를 보세요 — 사이드로딩 권한이 실제로
+어떤 것인지, 스토어로 가면 무엇이 달라지는지 정리해 두었습니다.
+플레이스토어 출시 절차는 **[PLAY_STORE.md](PLAY_STORE.md)** 에 있습니다. 아래는 사이드로딩 설명입니다.
 
 이 저장소는 코드만 들어 있고, 설치 파일은 GitHub Actions가 만들어 줍니다.
 
@@ -198,5 +200,6 @@ app/src/main/java/com/henny/checklist/
 docs/                    GitHub Pages로 올리는 개인정보처리방침
 store/                   Play 스토어 등록정보용 아이콘·기능 그래픽
 tools/make_store_graphics.py   위 그래픽 생성 스크립트
+INSTALL.md               설치 방법 고르기 (사이드로딩 vs 스토어)
 PLAY_STORE.md            플레이 출시 절차
 ```
