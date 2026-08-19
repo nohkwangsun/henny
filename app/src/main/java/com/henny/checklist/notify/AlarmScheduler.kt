@@ -79,14 +79,29 @@ object AlarmScheduler {
             }
             .sortedBy { it.at }
             .forEach { fire ->
-                val remaining = repo.remaining(fire.childId, LocalDate.now())
-                if (fire.onlyIfIncomplete && remaining == 0) return@forEach
+                val tasks = repo.tasksFor(fire.childId, LocalDate.now())
+                val undone = tasks.filter { !it.done }
+                if (fire.onlyIfIncomplete && undone.isEmpty()) return@forEach
+
+                // 점검 알림은 "확인해라"로 끝나면 안 열어본다. 목록을 알림에 그대로 펼친다.
+                val isCheckIn = fire.tag.startsWith("rem:")
+                val title = when {
+                    !isCheckIn -> fire.title
+                    undone.isEmpty() -> "오늘 할 일 다 했어요 🎉"
+                    else -> "오늘 할 일 ${undone.size}개 남았어요"
+                }
+                val text = if (isCheckIn && undone.isNotEmpty()) {
+                    fire.text + "\n" + undone.joinToString("\n") { "• " + it.title }
+                } else {
+                    fire.text
+                }
+
                 Notifications.show(
                     context = context,
                     id = fire.tag.hashCode(),
                     channel = fire.channel,
-                    title = fire.title,
-                    text = fire.text
+                    title = title,
+                    text = text
                 )
             }
 

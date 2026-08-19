@@ -219,9 +219,12 @@ private fun ParentToday(
                                 else MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.weight(1f)
                             )
-                            task.dueMinute?.let {
+                            // 떨어져 있으면 "했는지"만큼 "언제 했는지"가 궁금하다.
+                            val trailing = task.doneAt?.let { "${doneAtText(it)} 완료" }
+                                ?: task.dueMinute?.let { "${minuteToText(it)}까지" }
+                            if (trailing != null) {
                                 Text(
-                                    text = minuteToText(it),
+                                    text = trailing,
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -537,6 +540,14 @@ private fun ParentManage(repo: Repository, plan: Plan) {
             onDismiss = { editingReminder = null }
         )
     }
+}
+
+/** 체크한 시각을 "오후 4:20" 처럼 보여준다. */
+private fun doneAtText(epochMillis: Long): String {
+    val time = java.time.Instant.ofEpochMilli(epochMillis)
+        .atZone(java.time.ZoneId.systemDefault())
+        .toLocalTime()
+    return minuteToText(time.hour * 60 + time.minute)
 }
 
 private fun daysText(days: List<Int>): String {

@@ -77,8 +77,8 @@ fun DayPicker(
 fun TimeField(
     label: String,
     minute: Int?,
-    onChange: (Int?) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onChange: (Int?) -> Unit
 ) {
     val context = LocalContext.current
     Row(
