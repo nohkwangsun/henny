@@ -106,17 +106,46 @@ Android Studio 가 있다면 `Build → Generate Signed Bundle / APK → Create 
 
 ### GitHub Secrets 에 넣기 (태블릿 브라우저로 가능)
 
-GitHub 저장소 → **Settings → Secrets and variables → Actions → New repository secret** 로 4개 등록:
+**바로 가는 주소:** <https://github.com/nohkwangsun/henny/settings/secrets/actions>
 
-| 이름 | 값 |
+메뉴로 찾아가려면: 저장소 → **Settings** → 왼쪽 사이드바 **Secrets and variables** →
+**Actions** → **Secrets** 탭 → 초록색 **New repository secret** 버튼
+
+화면에서 헷갈리기 쉬운 것들을 먼저 정리합니다.
+
+| 보이는 것 | 골라야 하나 | 왜 |
+|---|---|---|
+| 사이드바 **Actions** / Codespaces / Dependabot | **Actions** | 앱을 빌드하는 게 Actions 이기 때문 |
+| **Secrets** 탭 / Variables 탭 | **Secrets** | 비밀번호와 키라서. Variables 는 값이 그대로 보임 |
+| **Repository secrets** / Environment secrets | **Repository** | 우리는 배포 환경(Environment)을 만들지 않았음 |
+| Organization secrets | 해당 없음 | 조직 계정에만 나타남. 개인 계정이면 안 보임 |
+
+**New repository secret** 을 누르면 칸이 두 개 나옵니다. **Name** 과 **Secret**.
+아래 4개를 하나씩 넣고 매번 **Add secret** 을 누릅니다. 이름은 대소문자까지 정확해야 합니다.
+
+| Name (그대로 입력) | Secret (넣을 값) |
 |---|---|
-| `KEYSTORE_BASE64` | 4번에서 복사한 긴 한 줄 |
-| `KEYSTORE_STORE_PASSWORD` | 위에서 정한 비밀번호 |
+| `KEYSTORE_BASE64` | `base64 -w0` 로 출력된 긴 한 줄 전체 |
+| `KEYSTORE_STORE_PASSWORD` | 키 만들 때 정한 비밀번호 |
 | `KEYSTORE_KEY_ALIAS` | `henny` |
-| `KEYSTORE_KEY_PASSWORD` | 위에서 정한 비밀번호 |
+| `KEYSTORE_KEY_PASSWORD` | 키 만들 때 정한 비밀번호 (위와 같은 값) |
 
-등록 후 아무 커밋이나 푸시하면 Actions 가 **서명된 AAB** 를 만들어 아티팩트로 올립니다.
-(시크릿이 없으면 일회용 키로 서명한 시험용 APK 만 만들고, AAB 는 만들지 않습니다.)
+알아두면 좋은 것:
+
+- **저장하면 값을 다시 볼 수 없습니다.** 덮어쓰기만 됩니다. 잘못 넣었다 싶으면
+  같은 이름으로 다시 등록(Update)하면 그만입니다.
+- 붙여넣을 때 **앞뒤 공백이나 따옴표가 딸려오지 않게** 하세요. 줄바꿈은 괜찮습니다.
+- 4개를 다 넣으면 목록에 이름 4개가 보입니다. 값은 안 보이는 게 정상입니다.
+
+### 제대로 들어갔는지 확인
+
+아무 커밋이나 푸시하거나, Actions 탭 → **Build APK** → **Run workflow** 를 누릅니다.
+실행이 끝나면 두 가지를 봅니다.
+
+1. **Prepare signing key** 단계 로그에 `진짜 업로드 키로 서명합니다` 가 나오면 성공입니다.
+   (`업로드 키 시크릿이 없습니다` 경고가 뜨면 이름을 잘못 넣은 것입니다.)
+2. **Artifacts → henny-apk** 안에 **`.aab` 파일이 생겼으면** 끝입니다.
+   이 파일을 Play 콘솔에 올립니다.
 
 > 이전에 저장소에 들어 있던 `keystore/henny-family.jks` 는 삭제했습니다.
 > 공개 저장소에 노출됐던 키라 **재사용하지 마세요.**
