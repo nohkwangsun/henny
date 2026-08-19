@@ -31,7 +31,7 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Decode upload key
+      - name: Prepare signing key
         id: key
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -41,39 +41,53 @@ jobs:
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
             echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
-            {
-              echo "HENNY_KEYSTORE=$RUNNER_TEMP/upload.jks"
-              echo "HENNY_STORE_PASSWORD=$STORE_PASSWORD"
-              echo "HENNY_KEY_ALIAS=$KEY_ALIAS"
-              echo "HENNY_KEY_PASSWORD=$KEY_PASSWORD"
-            } >> "$GITHUB_ENV"
-            echo "signed=true" >> "$GITHUB_OUTPUT"
-            echo "업로드 키로 서명합니다."
+            store_pw="$STORE_PASSWORD"; key_alias="$KEY_ALIAS"; key_pw="$KEY_PASSWORD"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "진짜 업로드 키로 서명합니다. AAB 를 Play 에 올릴 수 있습니다."
           else
-            echo "signed=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::업로드 키 시크릿이 없습니다. 서명 없는 디버그 APK만 만듭니다. PLAY_STORE.md 1단계를 참고하세요."
+            # 시크릿이 없어도 릴리스 빌드 경로(R8, 번들, 서명)는 그대로 확인해야 하므로
+            # 일회용 키를 즉석에서 만들어 서명한다. 이 키로 만든 AAB 는 버린다.
+            store_pw="throwaway"; key_alias="throwaway"; key_pw="throwaway"
+            keytool -genkeypair -v -keystore "$RUNNER_TEMP/upload.jks" -storetype PKCS12 \
+              -alias "$key_alias" -keyalg RSA -keysize 2048 -validity 30 \
+              -dname "CN=Henny Throwaway, O=Henny, C=KR" \
+              -storepass "$store_pw" -keypass "$key_pw" >/dev/null 2>&1
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::업로드 키 시크릿이 없습니다. 일회용 키로 서명한 시험용 APK만 만듭니다 (AAB 는 만들지 않습니다). PLAY_STORE.md 1단계를 참고하세요."
           fi
+          {
+            echo "HENNY_KEYSTORE=$RUNNER_TEMP/upload.jks"
+            echo "HENNY_STORE_PASSWORD=$store_pw"
+            echo "HENNY_KEY_ALIAS=$key_alias"
+            echo "HENNY_KEY_PASSWORD=$key_pw"
+          } >> "$GITHUB_ENV"
 
-      - name: Build signed release (AAB + APK)
-        if: steps.key.outputs.signed == 'true'
+      - name: Build release (AAB + APK)
         run: ./gradlew --no-daemon bundleRelease assembleRelease
 
-      - name: Build debug APK (no upload key configured)
-        if: steps.key.outputs.signed != 'true'
-        run: ./gradlew --no-daemon assembleDebug
-
       - name: Collect outputs
+        env:
+          IS_RELEASE: ${{ steps.key.outputs.release }}
         run: |
           mkdir -p out
           tag="v${HENNY_VERSION_NAME}-${GITHUB_SHA::7}"
-          if [ -f app/build/outputs/bundle/release/app-release.aab ]; then
+          if [ "$IS_RELEASE" = "true" ]; then
             cp app/build/outputs/bundle/release/app-release.aab "out/henny-${tag}.aab"
-          fi
-          if [ -f app/build/outputs/apk/release/app-release.apk ]; then
             cp app/build/outputs/apk/release/app-release.apk "out/henny-${tag}.apk"
-          fi
-          if [ -f app/build/outputs/apk/debug/app-debug.apk ]; then
-            cp app/build/outputs/apk/debug/app-debug.apk "out/henny-${tag}-debug.apk"
+          else
+            # 일회용 키로 서명된 AAB 를 Play 에 올리면 그 키가 업로드 키로 등록돼
+            # 다음부터 올릴 수 없게 된다. 아예 내보내지 않는다.
+            cp app/build/outputs/apk/release/app-release.apk "out/henny-${tag}-testkey.apk"
+            printf '%s\n' \
+              '이 APK 는 GitHub Secrets 에 업로드 키가 없어서 일회용 키로 서명된 시험용입니다.' \
+              '' \
+              '  - 빌드마다 서명이 달라 덮어 설치가 되지 않습니다.' \
+              '  - Play 에 올릴 수 없습니다. AAB 도 일부러 만들지 않았습니다.' \
+              '' \
+              '계속 쓰실 앱이라면 PLAY_STORE.md 1단계대로 업로드 키를 만들어' \
+              'GitHub Secrets 에 등록하세요. 그 뒤로는 서명된 APK 와' \
+              'Play 용 AAB 가 함께 만들어집니다.' \
+              > "out/읽어주세요.txt"
           fi
           ls -la out
 
@@ -86,7 +100,7 @@ jobs:
 
       # Play 콘솔에서 크래시 로그를 사람이 읽을 수 있게 하려면 매핑 파일이 필요하다.
       - name: Upload R8 mapping
-        if: steps.key.outputs.signed == 'true'
+        if: steps.key.outputs.release == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: henny-mapping
