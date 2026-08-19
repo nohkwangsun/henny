@@ -40,7 +40,12 @@
 > 공개 저장소에 올라가 있었으므로 누구나 받아갈 수 있었고, 업로드 키로 쓰면 안 됩니다.
 > git 기록에는 남아 있으니 **절대 재사용하지 마세요.** 아래로 새로 만듭니다.
 
-내 컴퓨터에서 (JDK가 설치돼 있어야 합니다):
+내 컴퓨터에서 실행합니다. `keytool` 은 JDK에 들어 있습니다.
+없으면 [Temurin JDK](https://adoptium.net/) 를 설치하거나, Android Studio가 깔려 있다면
+`Build → Generate Signed Bundle / APK → Create new...` 로 GUI에서 만들어도 됩니다.
+
+> 🔒 **이 키를 GitHub Actions 안에서 만들면 안 됩니다.** 공개 저장소의 Actions 아티팩트는
+> 누구나 내려받을 수 있어서 키가 그대로 새어 나갑니다. 반드시 본인 컴퓨터에서 만드세요.
 
 ```bash
 keytool -genkeypair -v -keystore henny-upload.jks -storetype PKCS12 \
@@ -265,6 +270,24 @@ Play 콘솔 → **정책 → 앱 콘텐츠**. 아래대로 답하면 됩니다.
 
 `versionName`은 `1.0.<실행번호>` 형태로 자동 생성됩니다. 직접 정하고 싶으면
 `.github/workflows/android.yml` 의 `HENNY_VERSION_NAME` 을 고치세요.
+
+---
+
+## 9.5 저장소를 비공개로 돌리는 것에 대해
+
+지금 `nohkwangsun/henny` 는 **공개 저장소**입니다. 소스만 있고 개인정보는 없지만,
+비공개로 바꾸면 Actions 아티팩트(빌드된 APK)도 외부에서 못 받게 되어 더 깔끔합니다.
+
+다만 **비공개로 바꾸면 GitHub Pages가 막힙니다.** 비공개 저장소의 Pages는 유료 플랜
+기능이라, 3단계에서 만든 개인정보처리방침 URL이 죽습니다. Play는 이 URL이 살아 있어야 하므로
+비공개로 돌리려면 방침을 다른 곳에 올려야 합니다.
+
+- 공개 Gist 로 올리고 그 주소를 쓰기 (가장 간단)
+- 방침 파일만 담은 작은 공개 저장소를 따로 만들어 Pages 켜기
+- 이미 쓰는 블로그나 노션 공개 페이지에 붙여넣기
+
+우선순위를 정하자면, **개인정보처리방침 URL이 살아 있는 게 먼저**입니다.
+저장소 공개 여부는 그다음 문제입니다.
 
 ---
 
