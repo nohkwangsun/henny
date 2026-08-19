@@ -38,8 +38,8 @@ private val DAY_NAMES = listOf("월", "화", "수", "목", "금", "토", "일")
 @Composable
 fun DayPicker(
     selected: List<Int>,
-    onChange: (List<Int>) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onChange: (List<Int>) -> Unit
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
