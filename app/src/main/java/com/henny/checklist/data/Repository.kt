@@ -475,7 +475,8 @@ class Repository private constructor(private val app: Context) {
         val bins = s.progressBins.toMutableMap()
         _plan.value.children.forEach { child ->
             if (bins[child.id].isNullOrBlank()) {
-                bins[child.id] = net.create("henny-progress-${child.name}", "{\"schema\":1,\"updatedAt\":0}")
+                // 이름은 한글일 수 있는데 HTTP 헤더에는 ASCII 만 넣을 수 있으므로 id 를 쓴다.
+                bins[child.id] = net.create("henny-progress-${child.id}", "{\"schema\":1,\"updatedAt\":0}")
             }
         }
         updateSettings { it.copy(planBin = planBin, progressBins = bins) }
