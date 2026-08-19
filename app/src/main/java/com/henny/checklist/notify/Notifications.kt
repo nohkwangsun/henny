@@ -41,9 +41,9 @@ object Notifications {
 
     fun canPost(context: Context): Boolean =
         if (Build.VERSION.SDK_INT >= 33) {
-            ContextCompat.checkSelfPerassignment(
+            ContextCompat.checkSelfPermission(
                 context,
-                android.Manifest.perassignment.POST_NOTIFICATIONS
+                android.Manifest.permission.POST_NOTIFICATIONS
             ) == PackageManager.PERMISSION_GRANTED
         } else {
             NotificationManagerCompat.from(context).areNotificationsEnabled()

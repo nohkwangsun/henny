@@ -114,7 +114,7 @@ object AlarmScheduler {
         val plan = repo.plan.value
         val out = mutableListOf<Fire>()
 
-        val targetWorkerren = when (settings.roleEnum) {
+        val targetWorkers = when (settings.roleEnum) {
             Role.WORKER -> listOfNotNull(settings.workerId.takeIf { it.isNotBlank() })
             Role.MANAGER -> emptyList()
             Role.NONE -> emptyList()
@@ -124,7 +124,7 @@ object AlarmScheduler {
             val date = from.plusDays(offset.toLong())
             val dow = date.dayOfWeek.value
 
-            targetWorkerren.forEach { workerId ->
+            targetWorkers.forEach { workerId ->
                 plan.reminders
                     .filter { it.workerId == workerId && it.enabled && dow in it.days }
                     .forEach { r ->

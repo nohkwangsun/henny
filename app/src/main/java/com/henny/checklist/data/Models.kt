@@ -71,9 +71,7 @@ data class Plan(
     val routines: List<Routine> = emptyList(),
     val assignments: List<Assignment> = emptyList(),
     val reminders: List<Reminder> = emptyList()
-) {
-    fun workersOf(workerId: String): Boolean = workers.any { it.id == workerId }
-}
+)
 
 /** 하루치 스냅샷의 항목 하나. [doneAt]이 null이면 아직 안 함. */
 @Serializable
