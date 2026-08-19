@@ -50,7 +50,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
-import com.henny.checklist.data.Child
+import com.henny.checklist.data.Worker
 import com.henny.checklist.data.Plan
 import com.henny.checklist.data.Reminder
 import com.henny.checklist.data.Repository
@@ -59,17 +59,17 @@ import com.henny.checklist.data.Settings
 import com.henny.checklist.data.minuteToText
 import java.time.LocalDate
 
-enum class ParentTab { TODAY, STATS, MANAGE, SETTINGS }
+enum class ManagerTab { TODAY, STATS, MANAGE, SETTINGS }
 
 @Composable
-fun ParentScreen(
+fun ManagerScreen(
     repo: Repository,
     plan: Plan,
     settings: Settings,
     syncing: Boolean,
     onSync: () -> Unit
 ) {
-    var tab by remember { mutableStateOf(ParentTab.TODAY) }
+    var tab by remember { mutableStateOf(ManagerTab.TODAY) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -77,26 +77,26 @@ fun ParentScreen(
         bottomBar = {
             NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                 NavigationBarItem(
-                    selected = tab == ParentTab.TODAY,
-                    onClick = { tab = ParentTab.TODAY },
+                    selected = tab == ManagerTab.TODAY,
+                    onClick = { tab = ManagerTab.TODAY },
                     icon = { Icon(Icons.Default.Home, null) },
                     label = { Text("오늘") }
                 )
                 NavigationBarItem(
-                    selected = tab == ParentTab.STATS,
-                    onClick = { tab = ParentTab.STATS },
+                    selected = tab == ManagerTab.STATS,
+                    onClick = { tab = ManagerTab.STATS },
                     icon = { Icon(Icons.Default.DateRange, null) },
                     label = { Text("통계") }
                 )
                 NavigationBarItem(
-                    selected = tab == ParentTab.MANAGE,
-                    onClick = { tab = ParentTab.MANAGE },
+                    selected = tab == ManagerTab.MANAGE,
+                    onClick = { tab = ManagerTab.MANAGE },
                     icon = { Icon(Icons.Default.Check, null) },
                     label = { Text("할 일") }
                 )
                 NavigationBarItem(
-                    selected = tab == ParentTab.SETTINGS,
-                    onClick = { tab = ParentTab.SETTINGS },
+                    selected = tab == ManagerTab.SETTINGS,
+                    onClick = { tab = ManagerTab.SETTINGS },
                     icon = { Icon(Icons.Default.Settings, null) },
                     label = { Text("설정") }
                 )
@@ -109,10 +109,10 @@ fun ParentScreen(
                 .padding(inner)
         ) {
             when (tab) {
-                ParentTab.TODAY -> ParentToday(repo, plan, settings, syncing, onSync)
-                ParentTab.STATS -> ParentStats(repo, plan)
-                ParentTab.MANAGE -> ParentManage(repo, plan)
-                ParentTab.SETTINGS -> SettingsScreen(repo, settings, plan, isParent = true)
+                ManagerTab.TODAY -> ManagerToday(repo, plan, settings, syncing, onSync)
+                ManagerTab.STATS -> ManagerStats(repo, plan)
+                ManagerTab.MANAGE -> ManagerTasks(repo, plan)
+                ManagerTab.SETTINGS -> SettingsScreen(repo, settings, plan, isManager = true)
             }
         }
     }
@@ -121,7 +121,7 @@ fun ParentScreen(
 // ------------------------------------------------------------------- 오늘
 
 @Composable
-private fun ParentToday(
+private fun ManagerToday(
     repo: Repository,
     plan: Plan,
     settings: Settings,
@@ -129,7 +129,7 @@ private fun ParentToday(
     onSync: () -> Unit
 ) {
     val today = LocalDate.now()
-    var missionFor by remember { mutableStateOf<Child?>(null) }
+    var assignmentFor by remember { mutableStateOf<Worker?>(null) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -154,30 +154,30 @@ private fun ParentToday(
             }
         }
 
-        if (plan.children.isEmpty()) {
+        if (plan.workers.isEmpty()) {
             item {
                 SectionCard {
-                    Text("아직 등록된 아이가 없어요. 설정 탭에서 아이를 추가해 주세요.")
+                    Text("아직 등록된 작업자가 없습니다. 설정 탭에서 추가하세요.")
                 }
             }
         }
 
-        plan.children.forEachIndexed { index, child ->
-            item(key = child.id) {
-                val accent = childColor(index)
-                val tasks = repo.tasksFor(child.id, today)
+        plan.workers.forEachIndexed { index, worker ->
+            item(key = worker.id) {
+                val accent = workerColor(index)
+                val tasks = repo.tasksFor(worker.id, today)
                 val done = tasks.count { it.done }
                 SectionCard {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(
-                                text = "${child.emoji} ${child.name}",
+                                text = worker.label,
                                 style = MaterialTheme.typography.titleLarge
                             )
                             Text(
                                 text = when {
-                                    tasks.isEmpty() -> "오늘은 할 일이 없어요"
-                                    done == tasks.size -> "오늘 할 일 모두 완료 🎉"
+                                    tasks.isEmpty() -> "오늘 배정된 작업이 없습니다"
+                                    done == tasks.size -> "오늘 작업 모두 완료"
                                     else -> "${tasks.size - done}개 남음"
                                 },
                                 style = MaterialTheme.typography.bodyMedium,
@@ -211,7 +211,7 @@ private fun ParentToday(
                             )
                             Spacer(Modifier.width(10.dp))
                             Text(
-                                text = task.title + if (task.isMission) "  (미션)" else "",
+                                text = task.title + if (task.isAssignment) "  (임시)" else "",
                                 style = MaterialTheme.typography.bodyMedium,
                                 textDecoration = if (task.done) TextDecoration.LineThrough
                                 else TextDecoration.None,
@@ -232,27 +232,27 @@ private fun ParentToday(
                         }
                     }
                     Spacer(Modifier.height(8.dp))
-                    OutlinedButton(onClick = { missionFor = child }) {
+                    OutlinedButton(onClick = { assignmentFor = worker }) {
                         Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("오늘 미션 주기")
+                        Text("임시 작업 배정")
                     }
                 }
             }
         }
     }
 
-    missionFor?.let { child ->
+    assignmentFor?.let { worker ->
         TextPromptDialog(
-            title = "${child.name}에게 오늘 미션",
-            label = "미션 내용",
-            placeholder = "예: 가방 정리하기",
+            title = "${worker.name}에게 임시 작업",
+            label = "작업 내용",
+            placeholder = "예: 창고 재고 확인",
             confirmText = "보내기",
             onConfirm = {
-                repo.addMission(child.id, it, today, null)
-                missionFor = null
+                repo.addAssignment(worker.id, it, today, null)
+                assignmentFor = null
             },
-            onDismiss = { missionFor = null }
+            onDismiss = { assignmentFor = null }
         )
     }
 }
@@ -274,12 +274,12 @@ private fun syncStatusText(settings: Settings, syncing: Boolean): String = when 
 // ------------------------------------------------------------------- 통계
 
 @Composable
-private fun ParentStats(repo: Repository, plan: Plan) {
-    var selected by remember(plan.children.size) {
-        mutableStateOf(plan.children.firstOrNull()?.id ?: "")
+private fun ManagerStats(repo: Repository, plan: Plan) {
+    var selected by remember(plan.workers.size) {
+        mutableStateOf(plan.workers.firstOrNull()?.id ?: "")
     }
-    val index = plan.children.indexOfFirst { it.id == selected }.coerceAtLeast(0)
-    val accent = childColor(index)
+    val index = plan.workers.indexOfFirst { it.id == selected }.coerceAtLeast(0)
+    val accent = workerColor(index)
 
     Column(
         Modifier
@@ -289,11 +289,11 @@ private fun ParentStats(repo: Repository, plan: Plan) {
     ) {
         Text("통계", style = MaterialTheme.typography.headlineMedium)
         Spacer(Modifier.height(12.dp))
-        ChildChips(plan.children, selected) { selected = it }
+        WorkerChips(plan.workers, selected) { selected = it }
         Spacer(Modifier.height(16.dp))
 
         if (selected.isBlank()) {
-            SectionCard { Text("아이를 먼저 추가해 주세요.") }
+            SectionCard { Text("작업자를 먼저 추가하세요.") }
             return@Column
         }
 
@@ -330,20 +330,20 @@ private fun ParentStats(repo: Repository, plan: Plan) {
 }
 
 @Composable
-fun ChildChips(children: List<Child>, selected: String, onSelect: (String) -> Unit) {
+fun WorkerChips(workers: List<Worker>, selected: String, onSelect: (String) -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        children.forEachIndexed { index, child ->
-            val on = child.id == selected
-            val accent = childColor(index)
+        workers.forEachIndexed { index, worker ->
+            val on = worker.id == selected
+            val accent = workerColor(index)
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(14.dp))
                     .background(if (on) accent else MaterialTheme.colorScheme.surfaceVariant)
-                    .clickable { onSelect(child.id) }
+                    .clickable { onSelect(worker.id) }
                     .padding(horizontal = 16.dp, vertical = 10.dp)
             ) {
                 Text(
-                    text = "${child.emoji} ${child.name}",
+                    text = worker.label,
                     style = MaterialTheme.typography.labelLarge,
                     color = if (on) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -352,12 +352,12 @@ fun ChildChips(children: List<Child>, selected: String, onSelect: (String) -> Un
     }
 }
 
-// ---------------------------------------------------------------- 할 일 관리
+// ---------------------------------------------------------------- 작업 관리
 
 @Composable
-private fun ParentManage(repo: Repository, plan: Plan) {
-    var selected by remember(plan.children.size) {
-        mutableStateOf(plan.children.firstOrNull()?.id ?: "")
+private fun ManagerTasks(repo: Repository, plan: Plan) {
+    var selected by remember(plan.workers.size) {
+        mutableStateOf(plan.workers.firstOrNull()?.id ?: "")
     }
     var editing by remember { mutableStateOf<Routine?>(null) }
     var creating by remember { mutableStateOf(false) }
@@ -369,21 +369,21 @@ private fun ParentManage(repo: Repository, plan: Plan) {
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
-        Text("할 일 관리", style = MaterialTheme.typography.headlineMedium)
+        Text("작업 관리", style = MaterialTheme.typography.headlineMedium)
         Spacer(Modifier.height(12.dp))
-        ChildChips(plan.children, selected) { selected = it }
+        WorkerChips(plan.workers, selected) { selected = it }
         Spacer(Modifier.height(16.dp))
 
         if (selected.isBlank()) {
-            SectionCard { Text("아이를 먼저 추가해 주세요.") }
+            SectionCard { Text("작업자를 먼저 추가하세요.") }
             return@Column
         }
 
-        SectionCard(title = "반복하는 할 일") {
-            val routines = plan.routines.filter { it.childId == selected }.sortedBy { it.order }
+        SectionCard(title = "정기 작업") {
+            val routines = plan.routines.filter { it.workerId == selected }.sortedBy { it.order }
             if (routines.isEmpty()) {
                 Text(
-                    "아직 없어요. 아래에서 추가해 주세요.",
+                    "아직 없습니다. 아래에서 추가하세요.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -424,7 +424,7 @@ private fun ParentManage(repo: Repository, plan: Plan) {
             OutlinedButton(onClick = { creating = true }) {
                 Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("할 일 추가")
+                Text("작업 추가")
             }
         }
 
@@ -432,12 +432,12 @@ private fun ParentManage(repo: Repository, plan: Plan) {
 
         SectionCard(title = "점검 알림") {
             Text(
-                "정해둔 시각에 아이 폰이 울려요.",
+                "정해둔 시각에 작업자 기기가 알립니다.",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(6.dp))
-            plan.reminders.filter { it.childId == selected }.sortedBy { it.minute }
+            plan.reminders.filter { it.workerId == selected }.sortedBy { it.minute }
                 .forEach { reminder ->
                     Row(
                         modifier = Modifier
@@ -474,9 +474,9 @@ private fun ParentManage(repo: Repository, plan: Plan) {
             OutlinedButton(onClick = {
                 editingReminder = Reminder(
                     id = Repository.newId("r"),
-                    childId = selected,
+                    workerId = selected,
                     minute = 17 * 60,
-                    text = "할 일 확인하기"
+                    text = "작업 확인하기"
                 )
             }) {
                 Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))

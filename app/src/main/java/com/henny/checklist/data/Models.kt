@@ -10,14 +10,17 @@ val MONTH_FMT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM")
 fun LocalDate.key(): String = format(DATE_FMT)
 fun LocalDate.monthKey(): String = format(MONTH_FMT)
 
-/** 아이 한 명. */
+/** 작업자 한 명. */
 @Serializable
-data class Child(
+data class Worker(
     val id: String,
     val name: String,
-    val emoji: String = "🦊",
+    /** 목록에서 빨리 찾으라고 붙이는 표식. 비워둬도 된다. */
+    val emoji: String = "",
     val colorSeed: Int = 0
-)
+) {
+    val label: String get() = if (emoji.isBlank()) name else "$emoji $name"
+}
 
 /**
  * 반복 할 일. 한 번 정하면 지정한 요일마다 계속 나온다.
@@ -26,7 +29,7 @@ data class Child(
 @Serializable
 data class Routine(
     val id: String,
-    val childId: String,
+    val workerId: String,
     val title: String,
     val days: List<Int> = listOf(1, 2, 3, 4, 5),
     val dueMinute: Int? = null,
@@ -35,11 +38,11 @@ data class Routine(
     val order: Int = 0
 )
 
-/** 부모가 그날 하루만 주는 미션. */
+/** 관리자가 그날 하루만 배정하는 임시 작업. */
 @Serializable
-data class Mission(
+data class Assignment(
     val id: String,
-    val childId: String,
+    val workerId: String,
     val title: String,
     val date: String,
     val dueMinute: Int? = null,
@@ -51,7 +54,7 @@ data class Mission(
 @Serializable
 data class Reminder(
     val id: String,
-    val childId: String,
+    val workerId: String,
     val minute: Int,
     val text: String,
     val onlyIfIncomplete: Boolean = true,
@@ -59,17 +62,17 @@ data class Reminder(
     val enabled: Boolean = true
 )
 
-/** 부모가 쓰고 아이들이 읽는 문서. */
+/** 관리자가 쓰고 작업자들이 읽는 문서. */
 @Serializable
 data class Plan(
     val schema: Int = 1,
     val updatedAt: Long = 0L,
-    val children: List<Child> = emptyList(),
+    val workers: List<Worker> = emptyList(),
     val routines: List<Routine> = emptyList(),
-    val missions: List<Mission> = emptyList(),
+    val assignments: List<Assignment> = emptyList(),
     val reminders: List<Reminder> = emptyList()
 ) {
-    fun childrenOf(childId: String): Boolean = children.any { it.id == childId }
+    fun workersOf(workerId: String): Boolean = workers.any { it.id == workerId }
 }
 
 /** 하루치 스냅샷의 항목 하나. [doneAt]이 null이면 아직 안 함. */
@@ -96,17 +99,17 @@ data class DayLog(
 @Serializable
 data class MonthRollup(val month: String, val done: Int, val total: Int)
 
-/** 아이 한 명이 쓰고 부모가 읽는 문서. */
+/** 작업자 한 명이 쓰고 관리자가 읽는 문서. */
 @Serializable
 data class Progress(
     val schema: Int = 1,
-    val childId: String = "",
+    val workerId: String = "",
     val updatedAt: Long = 0L,
     val days: Map<String, DayLog> = emptyMap(),
     val archive: List<MonthRollup> = emptyList()
 )
 
-enum class Role { NONE, KID, PARENT }
+enum class Role { NONE, WORKER, MANAGER }
 
 enum class Backend { NONE, FIREBASE, JSONBIN, HTTP }
 
@@ -114,32 +117,32 @@ enum class Backend { NONE, FIREBASE, JSONBIN, HTTP }
 @Serializable
 data class Settings(
     val role: String = Role.NONE.name,
-    val childId: String = "",
+    val workerId: String = "",
     val backend: String = Backend.NONE.name,
     val apiKey: String = "",
     /** Firebase Realtime Database 주소. 예: https://내프로젝트.firebaseio.com */
     val firebaseDb: String = "",
     val planBin: String = "",
-    /** childId -> bin id(JSONBin) 또는 전체 URL(HTTP) */
+    /** workerId -> bin id(JSONBin) 또는 전체 URL(HTTP) */
     val progressBins: Map<String, String> = emptyMap(),
     val setupDone: Boolean = false,
     val lastSyncAt: Long = 0L,
     val lastSyncError: String = "",
-    /** 부모 기기에서 하루 한 번 받는 요약 알림 시각(자정부터 분). */
-    val parentSummaryMinute: Int = 20 * 60 + 30,
-    val parentSummaryOn: Boolean = true
+    /** 관리자 기기에서 하루 한 번 받는 요약 알림 시각(자정부터 분). */
+    val managerSummaryMinute: Int = 20 * 60 + 30,
+    val managerSummaryOn: Boolean = true
 ) {
     val roleEnum: Role get() = runCatching { Role.valueOf(role) }.getOrDefault(Role.NONE)
     val backendEnum: Backend get() = runCatching { Backend.valueOf(backend) }.getOrDefault(Backend.NONE)
 }
 
-/** 화면에 그릴 오늘의 할 일 한 줄. */
+/** 화면에 그릴 오늘의 작업 한 줄. */
 data class TodayTask(
     val id: String,
     val title: String,
     val dueMinute: Int?,
     val remindBefore: Int,
-    val isMission: Boolean,
+    val isAssignment: Boolean,
     val doneAt: Long?
 ) {
     val done: Boolean get() = doneAt != null

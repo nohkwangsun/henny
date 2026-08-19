@@ -39,7 +39,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.henny.checklist.data.Backend
-import com.henny.checklist.data.Child
+import com.henny.checklist.data.Worker
 import com.henny.checklist.data.Plan
 import com.henny.checklist.data.Repository
 import com.henny.checklist.data.Role
@@ -54,16 +54,16 @@ fun SettingsScreen(
     repo: Repository,
     settings: Settings,
     plan: Plan,
-    isParent: Boolean
+    isManager: Boolean
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
     val requestNotifications = LocalNotificationRequester.current
 
-    var addingChild by remember { mutableStateOf(false) }
-    var renaming by remember { mutableStateOf<Child?>(null) }
-    var deleting by remember { mutableStateOf<Child?>(null) }
+    var addingWorker by remember { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf<Worker?>(null) }
+    var deleting by remember { mutableStateOf<Worker?>(null) }
     var codeFor by remember { mutableStateOf<String?>(null) }
     var pairing by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
@@ -82,7 +82,7 @@ fun SettingsScreen(
         SectionCard(title = "알림") {
             val granted = Notifications.canPost(context)
             Text(
-                text = if (granted) "알림이 켜져 있어요." else "알림이 꺼져 있어 아무것도 울리지 않아요.",
+                text = if (granted) "알림이 켜져 있습니다." else "알림이 꺼져 있어 아무것도 울리지 않습니다.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = if (granted) MaterialTheme.colorScheme.onSurfaceVariant
                 else MaterialTheme.colorScheme.error
@@ -105,7 +105,7 @@ fun SettingsScreen(
             if (Build.VERSION.SDK_INT >= 31) {
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "알람이 제때 울리지 않으면 '알람 및 리마인더' 권한을 켜주세요.",
+                    "알람이 제때 울리지 않으면 '알람 및 리마인더' 권한을 켜세요.",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -119,29 +119,29 @@ fun SettingsScreen(
                     }
                 }) { Text("알람 권한 열기") }
             }
-            if (isParent) {
+            if (isManager) {
                 Spacer(Modifier.height(10.dp))
                 HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("하루 요약 받기", style = MaterialTheme.typography.bodyLarge)
                         Text(
-                            minuteToText(settings.parentSummaryMinute),
+                            minuteToText(settings.managerSummaryMinute),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     Switch(
-                        checked = settings.parentSummaryOn,
+                        checked = settings.managerSummaryOn,
                         onCheckedChange = {
-                            repo.updateSettings { s -> s.copy(parentSummaryOn = it) }
+                            repo.updateSettings { s -> s.copy(managerSummaryOn = it) }
                             AlarmScheduler.reschedule(context)
                         }
                     )
                 }
-                TimeField("요약 받을 시각", settings.parentSummaryMinute, allowClear = false) { m ->
+                TimeField("요약 받을 시각", settings.managerSummaryMinute, allowClear = false) { m ->
                     if (m != null) {
-                        repo.updateSettings { s -> s.copy(parentSummaryMinute = m) }
+                        repo.updateSettings { s -> s.copy(managerSummaryMinute = m) }
                         AlarmScheduler.reschedule(context)
                     }
                 }
@@ -150,10 +150,10 @@ fun SettingsScreen(
 
         Spacer(Modifier.height(14.dp))
 
-        // ---------------------------------------------------------- 아이들
-        if (isParent) {
-            SectionCard(title = "아이") {
-                plan.children.forEachIndexed { index, child ->
+        // ---------------------------------------------------------- 작업자들
+        if (isManager) {
+            SectionCard(title = "작업자") {
+                plan.workers.forEachIndexed { index, worker ->
                     if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
                     Row(
                         modifier = Modifier
@@ -164,42 +164,42 @@ fun SettingsScreen(
                         Column(
                             Modifier
                                 .weight(1f)
-                                .clickable { renaming = child }
+                                .clickable { renaming = worker }
                         ) {
                             Text(
-                                "${child.emoji} ${child.name}",
+                                worker.label,
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.Medium
                             )
                             Text(
-                                text = settings.progressBins[child.id]
+                                text = settings.progressBins[worker.id]
                                     ?.takeIf { it.isNotBlank() }
                                     ?.let { "연결됨 · 눌러서 이름 수정" } ?: "저장 공간 없음 · 눌러서 이름 수정",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        TextButton(onClick = { codeFor = child.id }) { Text("연결 코드") }
-                        TextButton(onClick = { deleting = child }) {
+                        TextButton(onClick = { codeFor = worker.id }) { Text("연결 코드") }
+                        TextButton(onClick = { deleting = worker }) {
                             Text("삭제", color = MaterialTheme.colorScheme.error)
                         }
                     }
                 }
                 Spacer(Modifier.height(6.dp))
-                OutlinedButton(onClick = { addingChild = true }) { Text("아이 추가") }
+                OutlinedButton(onClick = { addingWorker = true }) { Text("작업자 추가") }
             }
             Spacer(Modifier.height(14.dp))
         }
 
         // ---------------------------------------------------------- 저장소
-        SectionCard(title = "가족 저장소") {
+        SectionCard(title = "팀 저장소") {
             Text(
                 text = backendHelp(settings.backendEnum),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(10.dp))
-            if (isParent) {
+            if (isManager) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     BackendChip("안 씀", settings.backendEnum == Backend.NONE) {
                         repo.updateSettings { it.copy(backend = Backend.NONE.name) }
@@ -237,7 +237,7 @@ fun SettingsScreen(
                     )
                     Spacer(Modifier.height(10.dp))
                     Button(
-                        enabled = !busy && settings.firebaseDb.isNotBlank() && plan.children.isNotEmpty(),
+                        enabled = !busy && settings.firebaseDb.isNotBlank() && plan.workers.isNotEmpty(),
                         onClick = {
                             busy = true
                             scope.launch {
@@ -262,7 +262,7 @@ fun SettingsScreen(
                     )
                     Spacer(Modifier.height(10.dp))
                     Button(
-                        enabled = !busy && settings.apiKey.isNotBlank() && plan.children.isNotEmpty(),
+                        enabled = !busy && settings.apiKey.isNotBlank() && plan.workers.isNotEmpty(),
                         onClick = {
                             busy = true
                             scope.launch {
@@ -288,16 +288,16 @@ fun SettingsScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
-                    plan.children.forEach { child ->
+                    plan.workers.forEach { worker ->
                         Spacer(Modifier.height(8.dp))
                         OutlinedTextField(
-                            value = settings.progressBins[child.id] ?: "",
+                            value = settings.progressBins[worker.id] ?: "",
                             onValueChange = { v ->
                                 repo.updateSettings {
-                                    it.copy(progressBins = it.progressBins + (child.id to v.trim()))
+                                    it.copy(progressBins = it.progressBins + (worker.id to v.trim()))
                                 }
                             },
-                            label = { Text("${child.name} 기록 주소") },
+                            label = { Text("${worker.name} 기록 주소") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -305,8 +305,8 @@ fun SettingsScreen(
                 }
             } else {
                 Text(
-                    text = if (settings.backendEnum == Backend.NONE) "이 폰에서만 사용 중"
-                    else "부모님 폰과 연결되어 있어요.",
+                    text = if (settings.backendEnum == Backend.NONE) "이 기기에서만 사용 중"
+                    else "관리자 기기와 연결되어 있습니다.",
                     style = MaterialTheme.typography.bodyLarge
                 )
                 Spacer(Modifier.height(8.dp))
@@ -347,8 +347,8 @@ fun SettingsScreen(
 
         SectionCard(title = "이 기기") {
             Text(
-                text = if (settings.roleEnum == Role.PARENT) "부모용으로 설정됨"
-                else "${repo.childName(settings.childId)}의 폰",
+                text = if (settings.roleEnum == Role.MANAGER) "관리자용으로 설정됨"
+                else "${repo.workerName(settings.workerId)}의 기기",
                 style = MaterialTheme.typography.bodyLarge
             )
             Spacer(Modifier.height(8.dp))
@@ -362,7 +362,7 @@ fun SettingsScreen(
                 Text("모든 데이터 지우기", color = MaterialTheme.colorScheme.error)
             }
             Text(
-                "아이 정보와 지금까지의 기록을 이 폰과 가족 저장소 양쪽에서 지웁니다.",
+                "작업자 정보와 지금까지의 기록을 이 폰과 팀 저장소 양쪽에서 지웁니다.",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -371,29 +371,29 @@ fun SettingsScreen(
         Spacer(Modifier.height(32.dp))
     }
 
-    renaming?.let { child ->
+    renaming?.let { worker ->
         TextPromptDialog(
             title = "이름 바꾸기",
             label = "이름",
-            initial = child.name,
+            initial = worker.name,
             onConfirm = {
-                repo.renameChild(child.id, it)
+                repo.renameWorker(worker.id, it)
                 renaming = null
             },
             onDismiss = { renaming = null }
         )
     }
 
-    deleting?.let { child ->
+    deleting?.let { worker ->
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { deleting = null },
-            title = { Text("${child.name} 삭제") },
+            title = { Text("${worker.name} 삭제") },
             text = {
-                Text("${child.name}의 할 일, 미션, 알림이 함께 지워집니다. 지금까지의 기록은 남습니다.")
+                Text("${worker.name}의 정기 작업, 임시 작업, 알림이 함께 지워집니다. 지금까지의 기록은 남습니다.")
             },
             confirmButton = {
                 TextButton(onClick = {
-                    repo.deleteChild(child.id)
+                    repo.deleteWorker(worker.id)
                     deleting = null
                 }) { Text("삭제", color = MaterialTheme.colorScheme.error) }
             },
@@ -407,8 +407,8 @@ fun SettingsScreen(
             title = { Text("모든 데이터 지우기") },
             text = {
                 Text(
-                    "아이 정보, 할 일, 미션, 알림, 지금까지의 체크 기록을 이 폰과 " +
-                        "가족 저장소에서 모두 지웁니다. 되돌릴 수 없습니다."
+                    "작업자 정보, 정기 작업, 임시 작업, 알림, 지금까지의 체크 기록을 이 기기와 " +
+                        "팀 저장소에서 모두 지웁니다. 되돌릴 수 없습니다."
                 )
             },
             confirmButton = {
@@ -433,30 +433,29 @@ fun SettingsScreen(
         )
     }
 
-    if (addingChild) {
+    if (addingWorker) {
         TextPromptDialog(
-            title = "아이 추가",
-            label = "이름 또는 별명",
-            placeholder = "예: 첫째, 민이",
+            title = "작업자 추가",
+            label = "이름 또는 표시 이름",
+            placeholder = "예: 김민준, 야간조",
             confirmText = "추가",
             onConfirm = { name ->
-                val emoji = listOf("🦊", "🐧", "🐨", "🐯")[plan.children.size % 4]
-                repo.addChild(name, emoji)
-                addingChild = false
+                                repo.addWorker(name, "")
+                addingWorker = false
             },
-            onDismiss = { addingChild = false }
+            onDismiss = { addingWorker = false }
         )
     }
 
-    codeFor?.let { childId ->
-        val code = repo.pairingCode(childId)
+    codeFor?.let { workerId ->
+        val code = repo.pairingCode(workerId)
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { codeFor = null },
-            title = { Text("${repo.childName(childId)} 연결 코드") },
+            title = { Text("${repo.workerName(workerId)} 연결 코드") },
             text = {
                 Column {
                     Text(
-                        "아이 폰에서 앱을 열고 '아이 폰이에요'를 고른 뒤 이 코드를 붙여넣으면 끝이에요.",
+                        "작업자 폰에서 앱을 열고 '작업자 기기예요'를 고른 뒤 이 코드를 붙여넣으면 끝이에요.",
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Spacer(Modifier.height(10.dp))
@@ -483,7 +482,7 @@ fun SettingsScreen(
                 Row {
                     TextButton(onClick = {
                         clipboard.setText(AnnotatedString(code))
-                        Toast.makeText(context, "복사했어요", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "복사했습니다", Toast.LENGTH_SHORT).show()
                     }) { Text("복사") }
                     TextButton(onClick = { codeFor = null }) { Text("닫기") }
                 }
@@ -494,7 +493,7 @@ fun SettingsScreen(
     if (pairing) {
         TextPromptDialog(
             title = "연결 코드 입력",
-            label = "부모님이 보내준 코드",
+            label = "관리자가 보내준 코드",
             placeholder = "HENNY1:...",
             confirmText = "연결",
             onConfirm = { raw ->
@@ -502,7 +501,7 @@ fun SettingsScreen(
                 pairing = false
                 Toast.makeText(
                     context,
-                    result.fold({ "$it 폰으로 연결됐어요." }, { "코드를 읽지 못했어요." }),
+                    result.fold({ "$it 기기로 연결됐습니다." }, { "코드를 읽지 못했습니다." }),
                     Toast.LENGTH_LONG
                 ).show()
                 if (result.isSuccess) {
@@ -525,7 +524,7 @@ private fun BackendChip(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 private fun backendHelp(backend: Backend): String = when (backend) {
-    Backend.NONE -> "지금은 이 폰에만 저장돼요. 다른 폰과 공유하려면 저장소를 골라주세요."
+    Backend.NONE -> "지금은 이 기기에만 저장됩니다. 다른 기기와 공유하려면 저장소를 골라주세요."
     Backend.FIREBASE -> "구글 Firebase 실시간 데이터베이스에 가족용 문서를 둡니다. 무료이고, 자료는 내 구글 계정 안에 있습니다."
     Backend.JSONBIN -> "jsonbin.io 에 가족용 문서를 만들어 주고받습니다. 무료 계정의 Master Key만 있으면 돼요."
     Backend.HTTP -> "GET/PUT 이 되는 아무 JSON 주소나 쓸 수 있어요. (jsonblob.com, npoint.io 등)"

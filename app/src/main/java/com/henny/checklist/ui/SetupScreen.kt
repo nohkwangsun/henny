@@ -35,7 +35,7 @@ import com.henny.checklist.data.Settings
 import com.henny.checklist.notify.AlarmScheduler
 import kotlinx.coroutines.launch
 
-private enum class Step { ROLE, PARENT_CHILDREN, PARENT_STORAGE, KID_PAIR, KID_SOLO }
+private enum class Step { ROLE, MANAGER_WORKERS, MANAGER_STORAGE, WORKER_PAIR, WORKER_SOLO }
 
 @Composable
 fun SetupScreen(repo: Repository, plan: Plan, settings: Settings) {
@@ -44,7 +44,7 @@ fun SetupScreen(repo: Repository, plan: Plan, settings: Settings) {
     val requestNotifications = LocalNotificationRequester.current
 
     var step by remember { mutableStateOf(Step.ROLE) }
-    var addingChild by remember { mutableStateOf(false) }
+    var addingWorker by remember { mutableStateOf(false) }
     var code by remember { mutableStateOf("") }
     var soloName by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
@@ -64,7 +64,7 @@ fun SetupScreen(repo: Repository, plan: Plan, settings: Settings) {
         Spacer(Modifier.height(24.dp))
         Text("헨니 체크", style = MaterialTheme.typography.headlineLarge)
         Text(
-            "떨어져 있어도, 오늘 할 일은 같이 챙겨요.",
+            "오늘 할 작업을 한눈에.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -72,38 +72,38 @@ fun SetupScreen(repo: Repository, plan: Plan, settings: Settings) {
 
         when (step) {
             Step.ROLE -> {
-                SectionCard(title = "이 폰은 누구 폰인가요?") {
+                SectionCard(title = "이 기기는 어느 쪽인가요?") {
                     Button(
                         onClick = {
-                            repo.updateSettings { it.copy(role = Role.PARENT.name) }
-                            step = Step.PARENT_CHILDREN
+                            repo.updateSettings { it.copy(role = Role.MANAGER.name) }
+                            step = Step.MANAGER_WORKERS
                         },
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text("부모 폰이에요") }
+                    ) { Text("관리자 기기예요") }
                     Spacer(Modifier.height(10.dp))
                     OutlinedButton(
                         onClick = {
-                            repo.updateSettings { it.copy(role = Role.KID.name) }
-                            step = Step.KID_PAIR
+                            repo.updateSettings { it.copy(role = Role.WORKER.name) }
+                            step = Step.WORKER_PAIR
                         },
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text("아이 폰이에요") }
+                    ) { Text("작업자 기기예요") }
                 }
             }
 
-            Step.PARENT_CHILDREN -> {
-                SectionCard(title = "아이를 등록해 주세요") {
-                    if (plan.children.isEmpty()) {
+            Step.MANAGER_WORKERS -> {
+                SectionCard(title = "작업자를 등록해 주세요") {
+                    if (plan.workers.isEmpty()) {
                         Text(
-                            "아이마다 할 일이 다르니 한 명씩 따로 등록해요. " +
-                                "실명 대신 별명을 써도 됩니다.",
+                            "작업자마다 할 일이 다르니 한 명씩 따로 등록합니다. " +
+                                "실명 대신 표시 이름을 써도 됩니다.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    plan.children.forEach { child ->
+                    plan.workers.forEach { worker ->
                         Text(
-                            "${child.emoji} ${child.name}",
+                            worker.label,
                             style = MaterialTheme.typography.bodyLarge,
                             fontWeight = FontWeight.Medium,
                             modifier = Modifier.padding(vertical = 6.dp)
@@ -111,23 +111,23 @@ fun SetupScreen(repo: Repository, plan: Plan, settings: Settings) {
                     }
                     Spacer(Modifier.height(8.dp))
                     OutlinedButton(
-                        onClick = { addingChild = true },
+                        onClick = { addingWorker = true },
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text("아이 추가") }
+                    ) { Text("작업자 추가") }
                     Spacer(Modifier.height(10.dp))
                     Button(
-                        onClick = { step = Step.PARENT_STORAGE },
-                        enabled = plan.children.isNotEmpty(),
+                        onClick = { step = Step.MANAGER_STORAGE },
+                        enabled = plan.workers.isNotEmpty(),
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("다음") }
                 }
             }
 
-            Step.PARENT_STORAGE -> {
-                SectionCard(title = "가족끼리 어떻게 주고받을까요?") {
+            Step.MANAGER_STORAGE -> {
+                SectionCard(title = "기기끼리 어떻게 주고받을까요?") {
                     Text(
                         "구글 Firebase 무료 데이터베이스를 쓰면 자료가 내 구글 계정 안에 남습니다. " +
-                            "콘솔에서 만든 주소를 붙여넣으면 아이 폰과 이어집니다. " +
+                            "콘솔에서 만든 주소를 붙여넣으면 작업자 기기와 이어집니다. " +
                             "다른 저장소는 나중에 설정 탭에서 고를 수 있어요.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -182,12 +182,12 @@ fun SetupScreen(repo: Repository, plan: Plan, settings: Settings) {
                             finish()
                         },
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text("나중에 하기 (이 폰에서만 사용)") }
+                    ) { Text("나중에 하기 (이 기기에서만 사용)") }
                 }
             }
 
-            Step.KID_PAIR -> {
-                SectionCard(title = "부모님이 준 코드를 붙여넣어요") {
+            Step.WORKER_PAIR -> {
+                SectionCard(title = "관리자가 준 코드를 붙여넣으세요") {
                     OutlinedTextField(
                         value = code,
                         onValueChange = { code = it },
@@ -204,7 +204,7 @@ fun SetupScreen(repo: Repository, plan: Plan, settings: Settings) {
                                 scope.launch { repo.sync() }
                                 Toast.makeText(
                                     context,
-                                    "${result.getOrNull()} 폰으로 연결됐어요!",
+                                    "${result.getOrNull()} 기기로 연결됐습니다.",
                                     Toast.LENGTH_LONG
                                 ).show()
                                 finish()
@@ -216,18 +216,18 @@ fun SetupScreen(repo: Repository, plan: Plan, settings: Settings) {
                     ) { Text("연결하기") }
                     Spacer(Modifier.height(8.dp))
                     TextButton(
-                        onClick = { step = Step.KID_SOLO },
+                        onClick = { step = Step.WORKER_SOLO },
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text("코드 없이 이 폰에서만 쓰기") }
+                    ) { Text("코드 없이 이 기기에서만 쓰기") }
                 }
             }
 
-            Step.KID_SOLO -> {
-                SectionCard(title = "이름을 알려주세요") {
+            Step.WORKER_SOLO -> {
+                SectionCard(title = "표시 이름을 입력하세요") {
                     OutlinedTextField(
                         value = soloName,
                         onValueChange = { soloName = it },
-                        label = { Text("이름 또는 별명") },
+                        label = { Text("이름 또는 표시 이름") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -235,11 +235,11 @@ fun SetupScreen(repo: Repository, plan: Plan, settings: Settings) {
                     Button(
                         enabled = soloName.isNotBlank(),
                         onClick = {
-                            val child = repo.addChild(soloName.trim(), "🦊")
+                            val worker = repo.addWorker(soloName.trim(), "")
                             repo.updateSettings {
                                 it.copy(
-                                    role = Role.KID.name,
-                                    childId = child.id,
+                                    role = Role.WORKER.name,
+                                    workerId = worker.id,
                                     backend = Backend.NONE.name
                                 )
                             }
@@ -260,18 +260,17 @@ fun SetupScreen(repo: Repository, plan: Plan, settings: Settings) {
         Spacer(Modifier.height(40.dp))
     }
 
-    if (addingChild) {
+    if (addingWorker) {
         TextPromptDialog(
-            title = "아이 추가",
-            label = "이름 또는 별명",
-            placeholder = "예: 첫째, 민이",
+            title = "작업자 추가",
+            label = "이름 또는 표시 이름",
+            placeholder = "예: 김민준, 야간조",
             confirmText = "추가",
             onConfirm = { name ->
-                val emoji = listOf("🦊", "🐧", "🐨", "🐯")[plan.children.size % 4]
-                repo.addChild(name, emoji)
-                addingChild = false
+                                repo.addWorker(name, "")
+                addingWorker = false
             },
-            onDismiss = { addingChild = false }
+            onDismiss = { addingWorker = false }
         )
     }
 }

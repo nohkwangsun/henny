@@ -55,8 +55,8 @@ class Repository private constructor(private val app: Context) {
 
     private fun reloadProgress() {
         val ids = buildSet {
-            addAll(_plan.value.children.map { it.id })
-            _settings.value.childId.takeIf { it.isNotBlank() }?.let { add(it) }
+            addAll(_plan.value.workers.map { it.id })
+            _settings.value.workerId.takeIf { it.isNotBlank() }?.let { add(it) }
         }
         _progress.value = ids.associateWith { store.loadProgress(it) }
     }
@@ -69,50 +69,50 @@ class Repository private constructor(private val app: Context) {
         store.saveSettings(next)
     }
 
-    fun progressOf(childId: String): Progress =
-        _progress.value[childId] ?: Progress(childId = childId)
+    fun progressOf(workerId: String): Progress =
+        _progress.value[workerId] ?: Progress(workerId = workerId)
 
-    fun childName(childId: String): String =
-        _plan.value.children.firstOrNull { it.id == childId }?.name ?: "우리 아이"
+    fun workerName(workerId: String): String =
+        _plan.value.workers.firstOrNull { it.id == workerId }?.name ?: "이름 없음"
 
-    fun child(childId: String): Child? = _plan.value.children.firstOrNull { it.id == childId }
+    fun worker(workerId: String): Worker? = _plan.value.workers.firstOrNull { it.id == workerId }
 
     // ------------------------------------------------------------ 오늘 할 일
 
-    fun tasksFor(childId: String, date: LocalDate): List<TodayTask> {
+    fun tasksFor(workerId: String, date: LocalDate): List<TodayTask> {
         val p = _plan.value
         val dow = date.dayOfWeek.value
         val dateKey = date.key()
-        val doneMap = progressOf(childId).days[dateKey]
+        val doneMap = progressOf(workerId).days[dateKey]
             ?.items?.associate { it.taskId to it.doneAt } ?: emptyMap()
 
-        val missions = p.missions
-            .filter { it.childId == childId && it.date == dateKey }
+        val assignments = p.assignments
+            .filter { it.workerId == workerId && it.date == dateKey }
             .map { TodayTask(it.id, it.title, it.dueMinute, it.remindBefore, true, doneMap[it.id]) }
 
         val routines = p.routines
-            .filter { it.childId == childId && it.active && dow in it.days }
+            .filter { it.workerId == workerId && it.active && dow in it.days }
             .sortedWith(compareBy({ it.order }, { it.title }))
             .map { TodayTask(it.id, it.title, it.dueMinute, it.remindBefore, false, doneMap[it.id]) }
 
-        return missions + routines
+        return assignments + routines
     }
 
-    fun expectedCount(childId: String, date: LocalDate): Int {
+    fun expectedCount(workerId: String, date: LocalDate): Int {
         val p = _plan.value
         val dow = date.dayOfWeek.value
         val dateKey = date.key()
-        return p.routines.count { it.childId == childId && it.active && dow in it.days } +
-            p.missions.count { it.childId == childId && it.date == dateKey }
+        return p.routines.count { it.workerId == workerId && it.active && dow in it.days } +
+            p.assignments.count { it.workerId == workerId && it.date == dateKey }
     }
 
-    fun remaining(childId: String, date: LocalDate): Int =
-        tasksFor(childId, date).count { !it.done }
+    fun remaining(workerId: String, date: LocalDate): Int =
+        tasksFor(workerId, date).count { !it.done }
 
     /** 체크/체크해제. 그날의 목록 전체를 스냅샷으로 남겨서 나중에 할 일이 바뀌어도 통계가 흔들리지 않는다. */
-    fun toggle(childId: String, date: LocalDate, taskId: String) {
+    fun toggle(workerId: String, date: LocalDate, taskId: String) {
         val now = System.currentTimeMillis()
-        val items = tasksFor(childId, date).map { t ->
+        val items = tasksFor(workerId, date).map { t ->
             val doneAt = when {
                 t.id != taskId -> t.doneAt
                 t.done -> null
@@ -120,23 +120,23 @@ class Repository private constructor(private val app: Context) {
             }
             LogItem(t.id, t.title, doneAt)
         }
-        writeDay(childId, date, DayLog(date.key(), items, now))
+        writeDay(workerId, date, DayLog(date.key(), items, now))
     }
 
-    private fun writeDay(childId: String, date: LocalDate, log: DayLog) {
-        val current = progressOf(childId)
+    private fun writeDay(workerId: String, date: LocalDate, log: DayLog) {
+        val current = progressOf(workerId)
         val updated = current.copy(
-            childId = childId,
+            workerId = workerId,
             updatedAt = System.currentTimeMillis(),
             days = current.days + (date.key() to log)
         ).pruned()
-        _progress.value = _progress.value + (childId to updated)
+        _progress.value = _progress.value + (workerId to updated)
         store.saveProgress(updated)
         schedulePush()
     }
 
     /**
-     * 아이는 보통 여러 개를 연달아 체크한다. 그때마다 네트워크를 두드리면
+     * 작업자는 보통 여러 개를 연달아 체크한다. 그때마다 네트워크를 두드리면
      * 무료 저장소 호출 한도만 잡아먹으므로 잠깐 모았다가 한 번에 올린다.
      */
     private fun schedulePush() {
@@ -177,10 +177,10 @@ class Repository private constructor(private val app: Context) {
 
     // ---------------------------------------------------------------- 통계
 
-    fun statFor(childId: String, from: LocalDate, to: LocalDate): RangeStat {
+    fun statFor(workerId: String, from: LocalDate, to: LocalDate): RangeStat {
         val today = LocalDate.now()
         val last = if (to.isAfter(today)) today else to
-        val logs = progressOf(childId).days
+        val logs = progressOf(workerId).days
         val perDay = mutableListOf<DayStat>()
         var d = from
         while (!d.isAfter(last)) {
@@ -188,35 +188,35 @@ class Repository private constructor(private val app: Context) {
             perDay += if (log != null && log.total > 0) {
                 DayStat(d, log.doneCount, log.total)
             } else {
-                // 아이가 앱을 아예 안 연 날도 "해야 했던 만큼"을 총량에 넣는다.
-                DayStat(d, 0, expectedCount(childId, d))
+                // 작업자가 앱을 아예 안 연 날도 "해야 했던 만큼"을 총량에 넣는다.
+                DayStat(d, 0, expectedCount(workerId, d))
             }
             d = d.plusDays(1)
         }
         return RangeStat(perDay.sumOf { it.done }, perDay.sumOf { it.total }, perDay)
     }
 
-    fun weekStat(childId: String, anchor: LocalDate = LocalDate.now()): RangeStat {
+    fun weekStat(workerId: String, anchor: LocalDate = LocalDate.now()): RangeStat {
         val monday = anchor.minusDays((anchor.dayOfWeek.value - 1).toLong())
-        return statFor(childId, monday, monday.plusDays(6))
+        return statFor(workerId, monday, monday.plusDays(6))
     }
 
-    fun monthStat(childId: String, anchor: LocalDate = LocalDate.now()): RangeStat {
+    fun monthStat(workerId: String, anchor: LocalDate = LocalDate.now()): RangeStat {
         val first = anchor.withDayOfMonth(1)
-        return statFor(childId, first, first.plusMonths(1).minusDays(1))
+        return statFor(workerId, first, first.plusMonths(1).minusDays(1))
     }
 
     /**
      * 연속으로 "할 일을 다 한" 날 수.
      * 할 일이 없던 날(주말 등)은 건너뛰고, 아직 진행 중인 오늘은 연속을 끊지 않는다.
      */
-    fun streak(childId: String): Int {
+    fun streak(workerId: String): Int {
         val today = LocalDate.now()
-        val logs = progressOf(childId).days
+        val logs = progressOf(workerId).days
         var count = 0
         var d = today
         repeat(400) {
-            val expected = logs[d.key()]?.total ?: expectedCount(childId, d)
+            val expected = logs[d.key()]?.total ?: expectedCount(workerId, d)
             if (expected == 0) {
                 d = d.minusDays(1)
                 return@repeat
@@ -246,51 +246,51 @@ class Repository private constructor(private val app: Context) {
         scope.launch { runCatching { sync() } }
     }
 
-    fun addChild(name: String, emoji: String): Child {
-        val child = Child(id = newId("c"), name = name.trim(), emoji = emoji)
+    fun addWorker(name: String, emoji: String): Worker {
+        val worker = Worker(id = newId("c"), name = name.trim(), emoji = emoji)
         mutatePlan { p ->
             p.copy(
-                children = p.children + child,
-                reminders = p.reminders + defaultReminders(child.id)
+                workers = p.workers + worker,
+                reminders = p.reminders + defaultReminders(worker.id)
             )
         }
-        return child
+        return worker
     }
 
-    private fun defaultReminders(childId: String) = listOf(
-        Reminder(newId("r"), childId, 7 * 60 + 30, "오늘 할 일을 확인해요", onlyIfIncomplete = false),
-        Reminder(newId("r"), childId, 16 * 60, "지금 하나만 시작해볼까?"),
-        Reminder(newId("r"), childId, 20 * 60, "자기 전 마지막 점검!")
+    private fun defaultReminders(workerId: String) = listOf(
+        Reminder(newId("r"), workerId, 7 * 60 + 30, "오늘 작업을 확인하세요", onlyIfIncomplete = false),
+        Reminder(newId("r"), workerId, 16 * 60, "아직 시작하지 않은 작업이 있습니다"),
+        Reminder(newId("r"), workerId, 20 * 60, "마감 전 최종 점검")
     )
 
-    fun renameChild(childId: String, name: String) = mutatePlan { p ->
+    fun renameWorker(workerId: String, name: String) = mutatePlan { p ->
         p.copy(
-            children = p.children.map {
-                if (it.id == childId) it.copy(name = name.trim()) else it
+            workers = p.workers.map {
+                if (it.id == workerId) it.copy(name = name.trim()) else it
             }
         )
     }
 
-    /** 아이를 지우면 그 아이에게 달린 할 일·미션·알림도 같이 사라진다. */
-    fun deleteChild(childId: String) {
+    /** 작업자를 지우면 그 작업자에게 달린 정기 작업·임시 작업·알림도 같이 사라진다. */
+    fun deleteWorker(workerId: String) {
         mutatePlan { p ->
             p.copy(
-                children = p.children.filterNot { it.id == childId },
-                routines = p.routines.filterNot { it.childId == childId },
-                missions = p.missions.filterNot { it.childId == childId },
-                reminders = p.reminders.filterNot { it.childId == childId }
+                workers = p.workers.filterNot { it.id == workerId },
+                routines = p.routines.filterNot { it.workerId == workerId },
+                assignments = p.assignments.filterNot { it.workerId == workerId },
+                reminders = p.reminders.filterNot { it.workerId == workerId }
             )
         }
-        updateSettings { it.copy(progressBins = it.progressBins - childId) }
+        updateSettings { it.copy(progressBins = it.progressBins - workerId) }
     }
 
-    fun addRoutine(childId: String, title: String, days: List<Int>, dueMinute: Int?) {
+    fun addRoutine(workerId: String, title: String, days: List<Int>, dueMinute: Int?) {
         mutatePlan { p ->
-            val order = (p.routines.filter { it.childId == childId }.maxOfOrNull { it.order } ?: 0) + 1
+            val order = (p.routines.filter { it.workerId == workerId }.maxOfOrNull { it.order } ?: 0) + 1
             p.copy(
                 routines = p.routines + Routine(
                     id = newId("t"),
-                    childId = childId,
+                    workerId = workerId,
                     title = title.trim(),
                     days = days,
                     dueMinute = dueMinute,
@@ -306,16 +306,16 @@ class Repository private constructor(private val app: Context) {
     fun deleteRoutine(id: String) =
         mutatePlan { p -> p.copy(routines = p.routines.filterNot { it.id == id }) }
 
-    fun addMission(childId: String, title: String, date: LocalDate, dueMinute: Int?) {
+    fun addAssignment(workerId: String, title: String, date: LocalDate, dueMinute: Int?) {
         mutatePlan { p ->
-            val fresh = p.missions.filterNot {
+            val fresh = p.assignments.filterNot {
                 runCatching { LocalDate.parse(it.date, DATE_FMT).isBefore(LocalDate.now().minusDays(45)) }
                     .getOrDefault(false)
             }
             p.copy(
-                missions = fresh + Mission(
+                assignments = fresh + Assignment(
                     id = newId("m"),
-                    childId = childId,
+                    workerId = workerId,
                     title = title.trim(),
                     date = date.key(),
                     dueMinute = dueMinute
@@ -324,8 +324,8 @@ class Repository private constructor(private val app: Context) {
         }
     }
 
-    fun deleteMission(id: String) =
-        mutatePlan { p -> p.copy(missions = p.missions.filterNot { it.id == id }) }
+    fun deleteAssignment(id: String) =
+        mutatePlan { p -> p.copy(assignments = p.assignments.filterNot { it.id == id }) }
 
     fun upsertReminder(reminder: Reminder) = mutatePlan { p ->
         val exists = p.reminders.any { it.id == reminder.id }
@@ -354,8 +354,8 @@ class Repository private constructor(private val app: Context) {
             // 파일 쓰기와 네트워크가 섞여 있으므로 통째로 IO 스레드에서 돈다.
             withContext(Dispatchers.IO) {
                 when (s.roleEnum) {
-                    Role.PARENT -> syncAsParent(net, s)
-                    Role.KID -> syncAsKid(net, s)
+                    Role.MANAGER -> syncAsParent(net, s)
+                    Role.WORKER -> syncAsKid(net, s)
                     Role.NONE -> Unit
                 }
             }
@@ -370,7 +370,7 @@ class Repository private constructor(private val app: Context) {
     }
 
     private suspend fun syncAsParent(net: RemoteStore, s: Settings) {
-        // 계획은 부모가 주인. 다른 부모 기기가 더 최신이면 그쪽을 따른다.
+        // 계획은 관리자가 주인. 다른 관리자 기기가 더 최신이면 그쪽을 따른다.
         if (s.planBin.isNotBlank()) {
             val remotePlanText = net.get(s.planBin)
             val remotePlan = remotePlanText?.let { runCatching { store.decodePlan(it) }.getOrNull() }
@@ -382,13 +382,13 @@ class Repository private constructor(private val app: Context) {
                 net.put(s.planBin, store.encode(_plan.value))
             }
         }
-        // 아이들의 기록은 읽기만 한다.
-        _plan.value.children.forEach { child ->
-            val handle = s.progressBins[child.id] ?: return@forEach
+        // 작업자들의 기록은 읽기만 한다.
+        _plan.value.workers.forEach { worker ->
+            val handle = s.progressBins[worker.id] ?: return@forEach
             val text = net.get(handle) ?: return@forEach
             val remoteProgress = runCatching { store.decodeProgress(text) }.getOrNull() ?: return@forEach
-            val merged = mergeProgress(progressOf(child.id), remoteProgress.copy(childId = child.id))
-            _progress.value = _progress.value + (child.id to merged)
+            val merged = mergeProgress(progressOf(worker.id), remoteProgress.copy(workerId = worker.id))
+            _progress.value = _progress.value + (worker.id to merged)
             store.saveProgress(merged)
         }
     }
@@ -404,15 +404,15 @@ class Repository private constructor(private val app: Context) {
             }
         }
         // 내 기록은 내가 주인. 기기를 바꿨을 수도 있으니 합친 뒤 올린다.
-        val handle = s.progressBins[s.childId]
+        val handle = s.progressBins[s.workerId]
         if (!handle.isNullOrBlank()) {
             val text = net.get(handle)
             val remoteProgress = text?.let { runCatching { store.decodeProgress(it) }.getOrNull() }
-            val mine = progressOf(s.childId)
+            val mine = progressOf(s.workerId)
             val merged = if (remoteProgress == null) mine
-            else mergeProgress(mine, remoteProgress.copy(childId = s.childId))
+            else mergeProgress(mine, remoteProgress.copy(workerId = s.workerId))
             if (merged != mine) {
-                _progress.value = _progress.value + (s.childId to merged)
+                _progress.value = _progress.value + (s.workerId to merged)
                 store.saveProgress(merged)
             }
             net.put(handle, store.encode(merged))
@@ -433,7 +433,7 @@ class Repository private constructor(private val app: Context) {
             }
             .sortedBy { it.month }
         return a.copy(
-            childId = a.childId.ifBlank { b.childId },
+            workerId = a.workerId.ifBlank { b.workerId },
             updatedAt = maxOf(a.updatedAt, b.updatedAt),
             days = days,
             archive = archive
@@ -453,12 +453,12 @@ class Repository private constructor(private val app: Context) {
                 s.progressBins.values.filter { it.isNotBlank() }.forEach { handle ->
                     net.put(handle, EMPTY_DOC)
                 }
-                if (s.roleEnum == Role.PARENT && s.planBin.isNotBlank()) {
+                if (s.roleEnum == Role.MANAGER && s.planBin.isNotBlank()) {
                     net.put(s.planBin, EMPTY_DOC)
                 }
             }
         }
-        val cleared = _progress.value.keys.associateWith { Progress(childId = it) }
+        val cleared = _progress.value.keys.associateWith { Progress(workerId = it) }
         cleared.values.forEach { store.saveProgress(it) }
         _progress.value = cleared
 
@@ -470,8 +470,8 @@ class Repository private constructor(private val app: Context) {
 
     // ------------------------------------------------------------ 연결 코드
 
-    /** 아이 기기에 붙여넣을 코드. 백엔드 접속 정보 + 그 아이의 문서 손잡이. */
-    fun pairingCode(childId: String): String {
+    /** 작업자 기기에 붙여넣을 코드. 백엔드 접속 정보 + 그 작업자의 문서 손잡이. */
+    fun pairingCode(workerId: String): String {
         val s = _settings.value
         val payload = buildString {
             append("{")
@@ -479,9 +479,9 @@ class Repository private constructor(private val app: Context) {
             append("\"b\":\"${s.backend}\",")
             append("\"k\":\"${s.apiKey.escape()}\",")
             append("\"p\":\"${s.planBin.escape()}\",")
-            append("\"c\":\"${childId.escape()}\",")
-            append("\"g\":\"${(s.progressBins[childId] ?: "").escape()}\",")
-            append("\"n\":\"${childName(childId).escape()}\"")
+            append("\"c\":\"${workerId.escape()}\",")
+            append("\"g\":\"${(s.progressBins[workerId] ?: "").escape()}\",")
+            append("\"n\":\"${workerName(workerId).escape()}\"")
             append("}")
         }
         val b64 = Base64.encodeToString(
@@ -491,7 +491,7 @@ class Repository private constructor(private val app: Context) {
         return "HENNY1:$b64"
     }
 
-    /** 아이 기기에서 코드를 받아 설정을 채운다. */
+    /** 작업자 기기에서 코드를 받아 설정을 채운다. */
     fun applyPairingCode(raw: String): Result<String> = runCatching {
         val body = raw.trim().removePrefix("HENNY1:").trim()
         val text = String(Base64.decode(body, Base64.URL_SAFE), Charsets.UTF_8)
@@ -500,27 +500,27 @@ class Repository private constructor(private val app: Context) {
                 ?: return ""
             return m.groupValues[1].unescape()
         }
-        val childId = field("c")
-        require(childId.isNotBlank()) { "코드에 아이 정보가 없습니다." }
+        val workerId = field("c")
+        require(workerId.isNotBlank()) { "코드에 작업자 정보가 없습니다." }
         updateSettings {
             it.copy(
-                role = Role.KID.name,
-                childId = childId,
+                role = Role.WORKER.name,
+                workerId = workerId,
                 backend = field("b").ifBlank { Backend.NONE.name },
                 apiKey = field("k"),
                 planBin = field("p"),
-                progressBins = mapOf(childId to field("g")),
+                progressBins = mapOf(workerId to field("g")),
                 setupDone = true
             )
         }
         reloadProgress()
-        field("n").ifBlank { "우리 아이" }
+        field("n").ifBlank { "이름 없음" }
     }
 
     private fun String.escape() = replace("\\", "\\\\").replace("\"", "\\\"")
     private fun String.unescape() = replace("\\\"", "\"").replace("\\\\", "\\")
 
-    /** 부모 기기: 계획 + 아이별 기록용 저장 공간을 준비한다. */
+    /** 관리자 기기: 계획 + 작업자별 기록용 저장 공간을 준비한다. */
     suspend fun provisionBins(): Result<Unit> = runCatching {
         val s = _settings.value
         val net = remote()
@@ -539,8 +539,8 @@ class Repository private constructor(private val app: Context) {
                 ?: UUID.randomUUID().toString().replace("-", "")
             planBin = "$base/henny/$family/plan.json"
             bins = s.progressBins.toMutableMap()
-            _plan.value.children.forEach { child ->
-                bins[child.id] = "$base/henny/$family/progress/${child.id}.json"
+            _plan.value.workers.forEach { worker ->
+                bins[worker.id] = "$base/henny/$family/progress/${worker.id}.json"
             }
         } else {
             var created = s.planBin
@@ -549,10 +549,10 @@ class Repository private constructor(private val app: Context) {
             }
             planBin = created
             bins = s.progressBins.toMutableMap()
-            _plan.value.children.forEach { child ->
-                if (bins[child.id].isNullOrBlank()) {
+            _plan.value.workers.forEach { worker ->
+                if (bins[worker.id].isNullOrBlank()) {
                     // 이름은 한글일 수 있는데 HTTP 헤더에는 ASCII 만 넣을 수 있으므로 id 를 쓴다.
-                    bins[child.id] = net.create("henny-progress-${child.id}", EMPTY_DOC)
+                    bins[worker.id] = net.create("henny-progress-${worker.id}", EMPTY_DOC)
                 }
             }
         }

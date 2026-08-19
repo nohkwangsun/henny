@@ -18,15 +18,15 @@ private val Indigo = Color(0xFF5A67B8)
 private val Cream = Color(0xFFF7F3EE)
 private val Ink = Color(0xFF1E2321)
 
-/** 아이별로 화면 색을 다르게 줘서 "내 앱"처럼 느끼게 한다. */
-val ChildColors = listOf(
+/** 작업자별로 화면 색을 다르게 줘서 "내 앱"처럼 느끼게 한다. */
+val WorkerColors = listOf(
     Color(0xFF2E7D6F),
     Color(0xFF5A67B8),
     Color(0xFFC2603E),
     Color(0xFF7A5AA8)
 )
 
-fun childColor(index: Int): Color = ChildColors[((index % ChildColors.size) + ChildColors.size) % ChildColors.size]
+fun workerColor(index: Int): Color = WorkerColors[((index % WorkerColors.size) + WorkerColors.size) % WorkerColors.size]
 
 private val LightColors = lightColorScheme(
     primary = Teal,

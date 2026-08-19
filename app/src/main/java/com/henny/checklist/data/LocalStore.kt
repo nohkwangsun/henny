@@ -45,10 +45,10 @@ class LocalStore(context: Context) {
     fun loadPlan(): Plan = read("plan.json", Plan())
     fun savePlan(value: Plan) = write("plan.json", value)
 
-    fun loadProgress(childId: String): Progress =
-        read("progress_$childId.json", Progress(childId = childId))
+    fun loadProgress(workerId: String): Progress =
+        read("progress_$workerId.json", Progress(workerId = workerId))
 
-    fun saveProgress(value: Progress) = write("progress_${value.childId}.json", value)
+    fun saveProgress(value: Progress) = write("progress_${value.workerId}.json", value)
 
     fun encode(plan: Plan): String = json.encodeToString(plan)
     fun encode(progress: Progress): String = json.encodeToString(progress)

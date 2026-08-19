@@ -93,7 +93,7 @@ fun ProgressRing(
     }
 }
 
-/** 요일별 막대. 주간 화면과 부모 화면에서 같이 쓴다. */
+/** 요일별 막대. 주간 화면과 관리자 화면에서 같이 쓴다. */
 @Composable
 fun DayBars(
     perDay: List<DayStat>,

@@ -29,8 +29,8 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var repo: Repository
 
-    private val notificationPermission =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+    private val notificationPerassignment =
+        registerForActivityResult(ActivityResultContracts.RequestPerassignment()) {
             AlarmScheduler.reschedule(this)
         }
 
@@ -73,7 +73,7 @@ class MainActivity : ComponentActivity() {
 
     private fun askForNotifications() {
         if (Build.VERSION.SDK_INT >= 33) {
-            notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            notificationPerassignment.launch(android.Manifest.perassignment.POST_NOTIFICATIONS)
         } else {
             runCatching {
                 startActivity(

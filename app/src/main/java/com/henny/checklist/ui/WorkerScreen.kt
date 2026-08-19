@@ -47,13 +47,13 @@ import com.henny.checklist.data.minuteToText
 import java.time.LocalDate
 
 /**
- * 아이가 보는 화면은 이 하나뿐이다.
+ * 작업자가 보는 화면은 이 하나뿐이다.
  * 켜면 바로 오늘 목록, 한 번 누르면 체크, 끝.
  */
 @Composable
-fun KidScreen(
-    childName: String,
-    childEmoji: String,
+fun WorkerScreen(
+    workerName: String,
+    workerEmoji: String,
     accent: Color,
     today: LocalDate,
     tasks: List<TodayTask>,
@@ -86,7 +86,7 @@ fun KidScreen(
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text(
-                            text = "$childEmoji $childName",
+                            text = if (workerEmoji.isBlank()) workerName else "$workerEmoji $workerName",
                             style = MaterialTheme.typography.headlineMedium,
                             color = MaterialTheme.colorScheme.onBackground
                         )
@@ -116,9 +116,9 @@ fun KidScreen(
                 Spacer(Modifier.height(8.dp))
                 Text(
                     text = when {
-                        total == 0 -> "오늘은 정해진 할 일이 없어요"
-                        allDone -> "오늘 할 일 끝! 정말 잘했어요 🎉"
-                        else -> "${total - done}개만 더 하면 끝이에요"
+                        total == 0 -> "오늘 배정된 작업이 없습니다"
+                        allDone -> "오늘 작업을 모두 마쳤습니다"
+                        else -> "${total - done}개 남았습니다"
                     },
                     modifier = Modifier.fillMaxWidth(),
                     style = MaterialTheme.typography.titleMedium,
@@ -197,9 +197,9 @@ private fun TaskRow(task: TodayTask, accent: Color, onToggle: () -> Unit) {
             }
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                if (task.isMission) {
+                if (task.isAssignment) {
                     Text(
-                        text = "오늘의 미션",
+                        text = "임시 작업",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.secondary,
                         fontWeight = FontWeight.Bold

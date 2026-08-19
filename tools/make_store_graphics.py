@@ -122,14 +122,14 @@ def make_feature():
         d.text((w * 0.36, h * 0.30), "헨니 체크", font=title, fill=WHITE, anchor="lm")
         d.text(
             (w * 0.36, h * 0.60),
-            "오늘 할 일, 스스로 체크",
+            "오늘 작업, 스스로 체크",
             font=sub,
             fill=CREAM,
             anchor="lm",
         )
         d.text(
             (w * 0.36, h * 0.75),
-            "떨어져 있어도 같이 챙겨요",
+            "관리자는 한눈에 확인",
             font=sub,
             fill=(206, 233, 225),
             anchor="lm",

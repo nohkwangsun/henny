@@ -30,7 +30,7 @@ object AlarmScheduler {
         val at: LocalDateTime,
         val title: String,
         val text: String,
-        val childId: String,
+        val workerId: String,
         val onlyIfIncomplete: Boolean,
         val channel: String,
         val tag: String
@@ -79,7 +79,7 @@ object AlarmScheduler {
             }
             .sortedBy { it.at }
             .forEach { fire ->
-                val tasks = repo.tasksFor(fire.childId, LocalDate.now())
+                val tasks = repo.tasksFor(fire.workerId, LocalDate.now())
                 val undone = tasks.filter { !it.done }
                 if (fire.onlyIfIncomplete && undone.isEmpty()) return@forEach
 
@@ -87,8 +87,8 @@ object AlarmScheduler {
                 val isCheckIn = fire.tag.startsWith("rem:")
                 val title = when {
                     !isCheckIn -> fire.title
-                    undone.isEmpty() -> "오늘 할 일 다 했어요 🎉"
-                    else -> "오늘 할 일 ${undone.size}개 남았어요"
+                    undone.isEmpty() -> "오늘 작업 완료"
+                    else -> "남은 작업 ${undone.size}개"
                 }
                 val text = if (isCheckIn && undone.isNotEmpty()) {
                     fire.text + "\n" + undone.joinToString("\n") { "• " + it.title }
@@ -114,9 +114,9 @@ object AlarmScheduler {
         val plan = repo.plan.value
         val out = mutableListOf<Fire>()
 
-        val targetChildren = when (settings.roleEnum) {
-            Role.KID -> listOfNotNull(settings.childId.takeIf { it.isNotBlank() })
-            Role.PARENT -> emptyList()
+        val targetWorkerren = when (settings.roleEnum) {
+            Role.WORKER -> listOfNotNull(settings.workerId.takeIf { it.isNotBlank() })
+            Role.MANAGER -> emptyList()
             Role.NONE -> emptyList()
         }
 
@@ -124,15 +124,15 @@ object AlarmScheduler {
             val date = from.plusDays(offset.toLong())
             val dow = date.dayOfWeek.value
 
-            targetChildren.forEach { childId ->
+            targetWorkerren.forEach { workerId ->
                 plan.reminders
-                    .filter { it.childId == childId && it.enabled && dow in it.days }
+                    .filter { it.workerId == workerId && it.enabled && dow in it.days }
                     .forEach { r ->
                         out += Fire(
                             at = date.atStartOfDay().plusMinutes(r.minute.toLong()),
-                            title = if (r.onlyIfIncomplete) "아직 남은 할 일이 있어요" else "오늘의 할 일",
+                            title = if (r.onlyIfIncomplete) "아직 남은 작업이 있습니다" else "오늘의 작업",
                             text = r.text,
-                            childId = childId,
+                            workerId = workerId,
                             onlyIfIncomplete = r.onlyIfIncomplete,
                             channel = Notifications.CHANNEL_TODO,
                             tag = "rem:${r.id}:${date}"
@@ -140,15 +140,15 @@ object AlarmScheduler {
                     }
 
                 // 마감 시각이 있는 할 일은 정해진 시간 전에 한 번 더 찔러준다.
-                repo.tasksFor(childId, date).forEach { task ->
+                repo.tasksFor(workerId, date).forEach { task ->
                     val due = task.dueMinute ?: return@forEach
                     val remindAt = due - task.remindBefore
                     if (remindAt < 0) return@forEach
                     out += Fire(
                         at = date.atStartOfDay().plusMinutes(remindAt.toLong()),
                         title = task.title,
-                        text = "${minuteToText(due)}까지예요. 지금 시작하면 딱 맞아요!",
-                        childId = childId,
+                        text = "${minuteToText(due)}까지입니다.",
+                        workerId = workerId,
                         onlyIfIncomplete = true,
                         channel = Notifications.CHANNEL_TODO,
                         tag = "due:${task.id}:${date}"
@@ -156,18 +156,18 @@ object AlarmScheduler {
                 }
             }
 
-            if (settings.roleEnum == Role.PARENT && settings.parentSummaryOn) {
-                val summary = plan.children.joinToString("  ") { child ->
-                    val tasks = repo.tasksFor(child.id, date)
+            if (settings.roleEnum == Role.MANAGER && settings.managerSummaryOn) {
+                val summary = plan.workers.joinToString("  ") { worker ->
+                    val tasks = repo.tasksFor(worker.id, date)
                     val done = tasks.count { it.done }
-                    "${child.name} $done/${tasks.size}"
+                    "${worker.name} $done/${tasks.size}"
                 }
                 if (summary.isNotBlank()) {
                     out += Fire(
-                        at = date.atStartOfDay().plusMinutes(settings.parentSummaryMinute.toLong()),
-                        title = "오늘 아이들 현황",
+                        at = date.atStartOfDay().plusMinutes(settings.managerSummaryMinute.toLong()),
+                        title = "오늘 작업 현황",
                         text = summary,
-                        childId = "",
+                        workerId = "",
                         onlyIfIncomplete = false,
                         channel = Notifications.CHANNEL_SUMMARY,
                         tag = "sum:${date}"

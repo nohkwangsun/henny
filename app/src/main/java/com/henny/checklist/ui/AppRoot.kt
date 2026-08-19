@@ -31,7 +31,7 @@ fun AppRoot(repo: Repository) {
     }
 
     when (settings.roleEnum) {
-        Role.PARENT -> ParentScreen(
+        Role.MANAGER -> ManagerScreen(
             repo = repo,
             plan = plan,
             settings = settings,
@@ -44,33 +44,33 @@ fun AppRoot(repo: Repository) {
             BackHandler(enabled = showSettings) { showSettings = false }
 
             if (showSettings) {
-                SettingsScreen(repo = repo, settings = settings, plan = plan, isParent = false)
+                SettingsScreen(repo = repo, settings = settings, plan = plan, isManager = false)
             } else {
                 val today = LocalDate.now()
-                val childId = settings.childId
-                val child = plan.children.firstOrNull { it.id == childId }
-                val index = plan.children.indexOfFirst { it.id == childId }.coerceAtLeast(0)
+                val workerId = settings.workerId
+                val worker = plan.workers.firstOrNull { it.id == workerId }
+                val index = plan.workers.indexOfFirst { it.id == workerId }.coerceAtLeast(0)
 
                 // progress / plan 이 바뀔 때만 목록을 다시 만든다.
-                val tasks = remember(progress, plan, childId, today) {
-                    repo.tasksFor(childId, today)
+                val tasks = remember(progress, plan, workerId, today) {
+                    repo.tasksFor(workerId, today)
                 }
-                val week = remember(progress, plan, childId, today) {
-                    repo.weekStat(childId, today)
+                val week = remember(progress, plan, workerId, today) {
+                    repo.weekStat(workerId, today)
                 }
-                val streak = remember(progress, plan, childId, today) {
-                    repo.streak(childId)
+                val streak = remember(progress, plan, workerId, today) {
+                    repo.streak(workerId)
                 }
 
-                KidScreen(
-                    childName = child?.name ?: "나",
-                    childEmoji = child?.emoji ?: "🦊",
-                    accent = childColor(index),
+                WorkerScreen(
+                    workerName = worker?.name ?: "나",
+                    workerEmoji = worker?.emoji.orEmpty(),
+                    accent = workerColor(index),
                     today = today,
                     tasks = tasks,
                     week = week,
                     streak = streak,
-                    onToggle = { taskId -> repo.toggle(childId, today, taskId) },
+                    onToggle = { taskId -> repo.toggle(workerId, today, taskId) },
                     onOpenSettings = { showSettings = true }
                 )
             }

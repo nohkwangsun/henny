@@ -138,14 +138,14 @@ fun RoutineDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (isNew) "할 일 추가" else "할 일 수정") },
+        title = { Text(if (isNew) "작업 추가" else "작업 수정") },
         text = {
             Column {
                 OutlinedTextField(
                     value = draft.title,
                     onValueChange = { draft = draft.copy(title = it) },
-                    label = { Text("무엇을 하나요?") },
-                    placeholder = { Text("예: 수학 문제집 2장") },
+                    label = { Text("어떤 작업인가요?") },
+                    placeholder = { Text("예: 일일 점검표 작성") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )

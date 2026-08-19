@@ -25,7 +25,7 @@ object Notifications {
             "할 일 알림",
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
-            description = "오늘 할 일을 챙기라고 알려줍니다."
+            description = "오늘 작업을 챙기라고 알립니다."
             enableVibration(true)
         }
         val summary = NotificationChannel(
@@ -33,7 +33,7 @@ object Notifications {
             "하루 요약",
             NotificationManager.IMPORTANCE_DEFAULT
         ).apply {
-            description = "아이들이 오늘 얼마나 했는지 알려줍니다."
+            description = "작업자들이 오늘 얼마나 진행했는지 알려줍니다."
         }
         manager.createNotificationChannel(todo)
         manager.createNotificationChannel(summary)
@@ -41,9 +41,9 @@ object Notifications {
 
     fun canPost(context: Context): Boolean =
         if (Build.VERSION.SDK_INT >= 33) {
-            ContextCompat.checkSelfPermission(
+            ContextCompat.checkSelfPerassignment(
                 context,
-                android.Manifest.permission.POST_NOTIFICATIONS
+                android.Manifest.perassignment.POST_NOTIFICATIONS
             ) == PackageManager.PERMISSION_GRANTED
         } else {
             NotificationManagerCompat.from(context).areNotificationsEnabled()
