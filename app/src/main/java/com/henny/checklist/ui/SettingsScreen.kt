@@ -204,6 +204,12 @@ fun SettingsScreen(
                     BackendChip("안 씀", settings.backendEnum == Backend.NONE) {
                         repo.updateSettings { it.copy(backend = Backend.NONE.name) }
                     }
+                    BackendChip("구글 Firebase", settings.backendEnum == Backend.FIREBASE) {
+                        repo.updateSettings { it.copy(backend = Backend.FIREBASE.name) }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     BackendChip("JSONBin", settings.backendEnum == Backend.JSONBIN) {
                         repo.updateSettings { it.copy(backend = Backend.JSONBIN.name) }
                     }
@@ -212,6 +218,40 @@ fun SettingsScreen(
                     }
                 }
                 Spacer(Modifier.height(10.dp))
+                if (settings.backendEnum == Backend.FIREBASE) {
+                    OutlinedTextField(
+                        value = settings.firebaseDb,
+                        onValueChange = { v -> repo.updateSettings { it.copy(firebaseDb = v.trim()) } },
+                        label = { Text("실시간 데이터베이스 주소") },
+                        placeholder = { Text("https://…firebasedatabase.app") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = settings.apiKey,
+                        onValueChange = { v -> repo.updateSettings { it.copy(apiKey = v.trim()) } },
+                        label = { Text("비밀키 (규칙으로 열어뒀다면 비워두세요)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Button(
+                        enabled = !busy && settings.firebaseDb.isNotBlank() && plan.children.isNotEmpty(),
+                        onClick = {
+                            busy = true
+                            scope.launch {
+                                val result = repo.provisionBins()
+                                busy = false
+                                Toast.makeText(
+                                    context,
+                                    result.fold({ "연결했습니다." }, { "실패: ${it.message}" }),
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        }
+                    ) { Text(if (busy) "연결 중…" else "연결하기") }
+                }
                 if (settings.backendEnum == Backend.JSONBIN) {
                     OutlinedTextField(
                         value = settings.apiKey,
@@ -486,6 +526,7 @@ private fun BackendChip(label: String, selected: Boolean, onClick: () -> Unit) {
 
 private fun backendHelp(backend: Backend): String = when (backend) {
     Backend.NONE -> "지금은 이 폰에만 저장돼요. 다른 폰과 공유하려면 저장소를 골라주세요."
+    Backend.FIREBASE -> "구글 Firebase 실시간 데이터베이스에 가족용 문서를 둡니다. 무료이고, 자료는 내 구글 계정 안에 있습니다."
     Backend.JSONBIN -> "jsonbin.io 에 가족용 문서를 만들어 주고받습니다. 무료 계정의 Master Key만 있으면 돼요."
     Backend.HTTP -> "GET/PUT 이 되는 아무 JSON 주소나 쓸 수 있어요. (jsonblob.com, npoint.io 등)"
 }

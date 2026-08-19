@@ -520,22 +520,43 @@ class Repository private constructor(private val app: Context) {
     private fun String.escape() = replace("\\", "\\\\").replace("\"", "\\\"")
     private fun String.unescape() = replace("\\\"", "\"").replace("\\\\", "\\")
 
-    /** 부모 기기: 계획 + 아이별 기록용 저장 공간을 한 번에 만든다. */
+    /** 부모 기기: 계획 + 아이별 기록용 저장 공간을 준비한다. */
     suspend fun provisionBins(): Result<Unit> = runCatching {
         val s = _settings.value
         val net = remote()
         require(net.configured) { "먼저 저장소를 고르고 열쇠를 넣어주세요." }
-        var planBin = s.planBin
-        if (planBin.isBlank()) {
-            planBin = net.create("henny-plan", "{\"schema\":1,\"updatedAt\":0}")
-        }
-        val bins = s.progressBins.toMutableMap()
-        _plan.value.children.forEach { child ->
-            if (bins[child.id].isNullOrBlank()) {
-                // 이름은 한글일 수 있는데 HTTP 헤더에는 ASCII 만 넣을 수 있으므로 id 를 쓴다.
-                bins[child.id] = net.create("henny-progress-${child.id}", "{\"schema\":1,\"updatedAt\":0}")
+
+        val planBin: String
+        val bins: MutableMap<String, String>
+
+        if (s.backendEnum == Backend.FIREBASE) {
+            // Realtime Database 는 쓰는 순간 경로가 생기므로 미리 만들 것이 없다.
+            val base = s.firebaseDb.trim().trimEnd('/')
+            require(base.startsWith("https://")) { "Firebase 데이터베이스 주소를 확인해 주세요." }
+            // 경로 한 칸을 추측 불가능한 값으로 두면, 규칙만으로도 남이 우리 자료를
+            // 찾아낼 수 없다. 이미 만들어 둔 값이 있으면 그대로 다시 쓴다.
+            val family = FAMILY_PATH.find(s.planBin)?.groupValues?.get(1)
+                ?: UUID.randomUUID().toString().replace("-", "")
+            planBin = "$base/henny/$family/plan.json"
+            bins = s.progressBins.toMutableMap()
+            _plan.value.children.forEach { child ->
+                bins[child.id] = "$base/henny/$family/progress/${child.id}.json"
+            }
+        } else {
+            var created = s.planBin
+            if (created.isBlank()) {
+                created = net.create("henny-plan", EMPTY_DOC)
+            }
+            planBin = created
+            bins = s.progressBins.toMutableMap()
+            _plan.value.children.forEach { child ->
+                if (bins[child.id].isNullOrBlank()) {
+                    // 이름은 한글일 수 있는데 HTTP 헤더에는 ASCII 만 넣을 수 있으므로 id 를 쓴다.
+                    bins[child.id] = net.create("henny-progress-${child.id}", EMPTY_DOC)
+                }
             }
         }
+
         updateSettings { it.copy(planBin = planBin, progressBins = bins) }
         withContext(Dispatchers.IO) { net.put(planBin, store.encode(_plan.value)) }
     }
@@ -543,6 +564,7 @@ class Repository private constructor(private val app: Context) {
     companion object {
         private const val PUSH_DEBOUNCE_MS = 12_000L
         private const val EMPTY_DOC = "{\"schema\":1,\"updatedAt\":0}"
+        private val FAMILY_PATH = Regex("/henny/([^/]+)/plan\\.json$")
 
         @Volatile
         private var instance: Repository? = null

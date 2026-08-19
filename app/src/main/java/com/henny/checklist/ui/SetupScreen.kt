@@ -126,26 +126,36 @@ fun SetupScreen(repo: Repository, plan: Plan, settings: Settings) {
             Step.PARENT_STORAGE -> {
                 SectionCard(title = "가족끼리 어떻게 주고받을까요?") {
                     Text(
-                        "jsonbin.io 무료 계정을 만들고 Master Key 를 붙여넣으면, " +
-                            "아이 폰과 자동으로 이어집니다. 나중에 설정에서 바꿔도 돼요.",
+                        "구글 Firebase 무료 데이터베이스를 쓰면 자료가 내 구글 계정 안에 남습니다. " +
+                            "콘솔에서 만든 주소를 붙여넣으면 아이 폰과 이어집니다. " +
+                            "다른 저장소는 나중에 설정 탭에서 고를 수 있어요.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(Modifier.height(12.dp))
                     OutlinedTextField(
-                        value = settings.apiKey,
+                        value = settings.firebaseDb,
                         onValueChange = { v ->
                             repo.updateSettings {
-                                it.copy(apiKey = v.trim(), backend = Backend.JSONBIN.name)
+                                it.copy(firebaseDb = v.trim(), backend = Backend.FIREBASE.name)
                             }
                         },
-                        label = { Text("JSONBin Master Key") },
+                        label = { Text("실시간 데이터베이스 주소") },
+                        placeholder = { Text("https://…firebasedatabase.app") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = settings.apiKey,
+                        onValueChange = { v -> repo.updateSettings { it.copy(apiKey = v.trim()) } },
+                        label = { Text("비밀키 (규칙으로 열어뒀다면 비워두세요)") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(Modifier.height(12.dp))
                     Button(
-                        enabled = !busy && settings.apiKey.isNotBlank(),
+                        enabled = !busy && settings.firebaseDb.isNotBlank(),
                         onClick = {
                             busy = true
                             scope.launch {
@@ -164,7 +174,7 @@ fun SetupScreen(repo: Repository, plan: Plan, settings: Settings) {
                             }
                         },
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text(if (busy) "만드는 중…" else "저장 공간 만들고 시작") }
+                    ) { Text(if (busy) "연결 중…" else "연결하고 시작") }
                     Spacer(Modifier.height(8.dp))
                     TextButton(
                         onClick = {

@@ -29,6 +29,9 @@ class RemoteStore(private val backend: Backend, private val apiKey: String) {
                 headers = mapOf("X-Master-Key" to apiKey, "X-Bin-Meta" to "false")
             )
             Backend.HTTP -> request(handle, "GET", null, emptyMap())
+            // Realtime Database 는 빈 경로에 리터럴 null 을 돌려준다. 없는 것으로 본다.
+            Backend.FIREBASE -> request(withAuth(handle), "GET", null, emptyMap())
+                ?.takeIf { it.trim() != "null" }
         }
     }
 
@@ -56,8 +59,21 @@ class RemoteStore(private val backend: Backend, private val apiKey: String) {
                 }
                 Unit
             }
+            Backend.FIREBASE -> {
+                request(withAuth(handle), "PUT", body, emptyMap())
+                Unit
+            }
         }
     }
+
+    /**
+     * Realtime Database 는 인증 방식이 두 가지다.
+     *  - 비밀키를 쓰는 경우: ?auth=<키>
+     *  - 규칙으로 특정 경로만 열어둔 경우: 키 없이 그대로
+     */
+    private fun withAuth(handle: String): String =
+        if (apiKey.isBlank()) handle
+        else handle + (if ('?' in handle) "&" else "?") + "auth=" + apiKey
 
     /** 새 문서를 만들고 손잡이를 돌려준다. JSONBin 에서만 자동 생성이 가능하다. */
     suspend fun create(name: String, body: String): String = withContext(Dispatchers.IO) {

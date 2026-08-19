@@ -108,7 +108,7 @@ data class Progress(
 
 enum class Role { NONE, KID, PARENT }
 
-enum class Backend { NONE, JSONBIN, HTTP }
+enum class Backend { NONE, FIREBASE, JSONBIN, HTTP }
 
 /** 기기마다 다른 설정. 절대 동기화하지 않는다. */
 @Serializable
@@ -117,6 +117,8 @@ data class Settings(
     val childId: String = "",
     val backend: String = Backend.NONE.name,
     val apiKey: String = "",
+    /** Firebase Realtime Database 주소. 예: https://내프로젝트.firebaseio.com */
+    val firebaseDb: String = "",
     val planBin: String = "",
     /** childId -> bin id(JSONBin) 또는 전체 URL(HTTP) */
     val progressBins: Map<String, String> = emptyMap(),
