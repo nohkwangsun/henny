@@ -78,6 +78,7 @@ fun TimeField(
     label: String,
     minute: Int?,
     modifier: Modifier = Modifier,
+    allowClear: Boolean = true,
     onChange: (Int?) -> Unit
 ) {
     val context = LocalContext.current
@@ -110,7 +111,7 @@ fun TimeField(
             fontWeight = FontWeight.Medium,
             color = MaterialTheme.colorScheme.onSurface
         )
-        if (minute != null) {
+        if (allowClear && minute != null) {
             Spacer(Modifier.size(12.dp))
             TextButton(onClick = { onChange(null) }) { Text("지우기") }
         }
@@ -243,7 +244,9 @@ fun ReminderDialog(
         title = { Text("점검 알림") },
         text = {
             Column {
-                TimeField("알릴 시각", draft.minute) { draft = draft.copy(minute = it ?: draft.minute) }
+                TimeField("알릴 시각", draft.minute, allowClear = false) {
+                    draft = draft.copy(minute = it ?: draft.minute)
+                }
                 OutlinedTextField(
                     value = draft.text,
                     onValueChange = { draft = draft.copy(text = it) },

@@ -134,7 +134,7 @@ fun SettingsScreen(
                         }
                     )
                 }
-                TimeField("요약 받을 시각", settings.parentSummaryMinute) { m ->
+                TimeField("요약 받을 시각", settings.parentSummaryMinute, allowClear = false) { m ->
                     if (m != null) {
                         repo.updateSettings { s -> s.copy(parentSummaryMinute = m) }
                         AlarmScheduler.reschedule(context)
