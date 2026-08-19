@@ -67,6 +67,7 @@ fun SettingsScreen(
     var codeFor by remember { mutableStateOf<String?>(null) }
     var pairing by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
+    var wiping by remember { mutableStateOf(false) }
 
     Column(
         Modifier
@@ -317,6 +318,14 @@ fun SettingsScreen(
             }) {
                 Text("이 기기 설정 초기화", color = MaterialTheme.colorScheme.error)
             }
+            TextButton(onClick = { wiping = true }) {
+                Text("모든 데이터 지우기", color = MaterialTheme.colorScheme.error)
+            }
+            Text(
+                "아이 정보와 지금까지의 기록을 이 폰과 가족 저장소 양쪽에서 지웁니다.",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
 
         Spacer(Modifier.height(32.dp))
@@ -352,11 +361,43 @@ fun SettingsScreen(
         )
     }
 
+    if (wiping) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { wiping = false },
+            title = { Text("모든 데이터 지우기") },
+            text = {
+                Text(
+                    "아이 정보, 할 일, 미션, 알림, 지금까지의 체크 기록을 이 폰과 " +
+                        "가족 저장소에서 모두 지웁니다. 되돌릴 수 없습니다."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !busy,
+                    onClick = {
+                        busy = true
+                        wiping = false
+                        scope.launch {
+                            val result = repo.wipeAllData()
+                            busy = false
+                            Toast.makeText(
+                                context,
+                                result.fold({ "모두 지웠습니다." }, { "실패: ${it.message}" }),
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                ) { Text("지우기", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { wiping = false }) { Text("취소") } }
+        )
+    }
+
     if (addingChild) {
         TextPromptDialog(
             title = "아이 추가",
-            label = "이름",
-            placeholder = "예: 민준",
+            label = "이름 또는 별명",
+            placeholder = "예: 첫째, 민이",
             confirmText = "추가",
             onConfirm = { name ->
                 val emoji = listOf("🦊", "🐧", "🐨", "🐯")[plan.children.size % 4]

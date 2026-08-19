@@ -9,3 +9,11 @@
 .cxx
 local.properties
 app/build/
+
+# 업로드 키는 절대 커밋하지 않는다
+*.jks
+*.keystore
+keystore/
+
+# 스토어 그래픽 생성용 폰트 캐시 (10MB, 커밋하지 않음)
+tools/.cache/

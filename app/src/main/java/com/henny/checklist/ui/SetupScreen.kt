@@ -95,7 +95,8 @@ fun SetupScreen(repo: Repository, plan: Plan, settings: Settings) {
                 SectionCard(title = "아이를 등록해 주세요") {
                     if (plan.children.isEmpty()) {
                         Text(
-                            "아이마다 할 일이 다르니 한 명씩 따로 등록해요.",
+                            "아이마다 할 일이 다르니 한 명씩 따로 등록해요. " +
+                                "실명 대신 별명을 써도 됩니다.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -216,7 +217,7 @@ fun SetupScreen(repo: Repository, plan: Plan, settings: Settings) {
                     OutlinedTextField(
                         value = soloName,
                         onValueChange = { soloName = it },
-                        label = { Text("이름") },
+                        label = { Text("이름 또는 별명") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -252,8 +253,8 @@ fun SetupScreen(repo: Repository, plan: Plan, settings: Settings) {
     if (addingChild) {
         TextPromptDialog(
             title = "아이 추가",
-            label = "이름",
-            placeholder = "예: 민준",
+            label = "이름 또는 별명",
+            placeholder = "예: 첫째, 민이",
             confirmText = "추가",
             onConfirm = { name ->
                 val emoji = listOf("🦊", "🐧", "🐨", "🐯")[plan.children.size % 4]

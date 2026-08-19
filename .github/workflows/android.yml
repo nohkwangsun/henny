@@ -11,6 +11,12 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    env:
+      # Play 에 올릴 때마다 값이 커져야 한다. 워크플로 실행 번호를 그대로 쓴다.
+      HENNY_VERSION_CODE: ${{ github.run_number }}
+      HENNY_VERSION_NAME: 1.0.${{ github.run_number }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -21,12 +27,12 @@ jobs:
 
       - uses: android-actions/setup-android@v3
         with:
-          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Use repository signing key unless secrets provide one
-        id: signing
+      - name: Decode upload key
+        id: key
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           STORE_PASSWORD: ${{ secrets.KEYSTORE_STORE_PASSWORD }}
@@ -34,30 +40,56 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEYSTORE_KEY_PASSWORD }}
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
             {
-              echo "HENNY_KEYSTORE=$RUNNER_TEMP/release.jks"
+              echo "HENNY_KEYSTORE=$RUNNER_TEMP/upload.jks"
               echo "HENNY_STORE_PASSWORD=$STORE_PASSWORD"
               echo "HENNY_KEY_ALIAS=$KEY_ALIAS"
               echo "HENNY_KEY_PASSWORD=$KEY_PASSWORD"
             } >> "$GITHUB_ENV"
-            echo "사용자 키스토어로 서명합니다."
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+            echo "업로드 키로 서명합니다."
           else
-            echo "저장소에 포함된 가족용 키스토어로 서명합니다."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::업로드 키 시크릿이 없습니다. 서명 없는 디버그 APK만 만듭니다. PLAY_STORE.md 1단계를 참고하세요."
           fi
 
-      - name: Build release APK
-        run: ./gradlew --no-daemon assembleRelease
+      - name: Build signed release (AAB + APK)
+        if: steps.key.outputs.signed == 'true'
+        run: ./gradlew --no-daemon bundleRelease assembleRelease
 
-      - name: Rename APK
+      - name: Build debug APK (no upload key configured)
+        if: steps.key.outputs.signed != 'true'
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Collect outputs
         run: |
           mkdir -p out
-          cp app/build/outputs/apk/release/app-release.apk "out/henny-$(date +%Y%m%d)-${GITHUB_SHA::7}.apk"
+          tag="v${HENNY_VERSION_NAME}-${GITHUB_SHA::7}"
+          if [ -f app/build/outputs/bundle/release/app-release.aab ]; then
+            cp app/build/outputs/bundle/release/app-release.aab "out/henny-${tag}.aab"
+          fi
+          if [ -f app/build/outputs/apk/release/app-release.apk ]; then
+            cp app/build/outputs/apk/release/app-release.apk "out/henny-${tag}.apk"
+          fi
+          if [ -f app/build/outputs/apk/debug/app-debug.apk ]; then
+            cp app/build/outputs/apk/debug/app-debug.apk "out/henny-${tag}-debug.apk"
+          fi
           ls -la out
 
       - uses: actions/upload-artifact@v4
         with:
           name: henny-apk
-          path: out/*.apk
+          path: out/*
           if-no-files-found: error
+          retention-days: 90
+
+      # Play 콘솔에서 크래시 로그를 사람이 읽을 수 있게 하려면 매핑 파일이 필요하다.
+      - name: Upload R8 mapping
+        if: steps.key.outputs.signed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: henny-mapping
+          path: app/build/outputs/mapping/release/mapping.txt
+          if-no-files-found: warn
           retention-days: 90

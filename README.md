@@ -14,18 +14,23 @@
 
 ## 1. APK 받기
 
-이 저장소는 코드만 들어 있고, APK는 GitHub Actions가 만들어 줍니다.
+구글 플레이로 배포하려면 **[PLAY_STORE.md](PLAY_STORE.md)** 를 보세요. 여기서는 사이드로딩만 설명합니다.
+
+이 저장소는 코드만 들어 있고, 설치 파일은 GitHub Actions가 만들어 줍니다.
 
 1. GitHub 저장소 → **Actions** 탭 → **Build APK** 워크플로
 2. 가장 최근 성공한 실행을 클릭
-3. 아래쪽 **Artifacts → henny-apk** 를 내려받기 (zip 안에 `henny-날짜-커밋.apk`)
-4. 그 APK 파일을 아이 폰과 부모 폰에 각각 보내서 설치
+3. 아래쪽 **Artifacts → henny-apk** 를 내려받기
+4. 압축 안의 `.apk` 를 아이 폰과 부모 폰에 각각 보내서 설치
 
 설치할 때 "이 출처의 앱 설치 허용"을 한 번 켜 줘야 합니다
 (설정 → 앱 → 특별한 앱 접근 → 알 수 없는 앱 설치).
 
-> 커밋을 푸시할 때마다 자동으로 새 APK가 만들어집니다.
-> 같은 서명키를 쓰므로 기존 앱 위에 덮어 설치하면 데이터가 그대로 유지됩니다.
+> **서명 키를 등록하기 전에는 디버그 APK만 만들어집니다.** 디버그 APK는 빌드마다 서명이 달라
+> 덮어 설치가 안 되고, 패키지명도 `.debug` 가 붙습니다. 계속 쓸 앱이라면
+> [PLAY_STORE.md 1단계](PLAY_STORE.md#1-업로드-키-만들기-필수-제일-먼저)대로 키를 한 번 만들어
+> GitHub Secrets에 넣으세요. 그 뒤로는 서명된 APK와 Play용 AAB가 함께 만들어지고,
+> 덮어 설치해도 데이터가 유지됩니다.
 
 ---
 
@@ -145,15 +150,15 @@
 
 ## 6. 서명키에 대한 안내
 
-`keystore/henny-family.jks` (비밀번호 `hennyfamily`)가 저장소에 들어 있습니다.
-CI가 매번 같은 키로 서명해야 **덮어 설치할 때 데이터가 유지**되기 때문입니다.
-가족끼리 사이드로딩하는 용도라 이렇게 두었고, Play 스토어에 올릴 계획이라면
-직접 만든 키로 바꾸고 GitHub 저장소 Secrets에 아래를 넣으면 그쪽이 우선 적용됩니다.
+업로드 키는 **저장소에 두지 않습니다.** GitHub Secrets에 넣으면 CI가 꺼내 씁니다.
 
 - `KEYSTORE_BASE64` — 키스토어 파일을 base64로 인코딩한 값
 - `KEYSTORE_STORE_PASSWORD`, `KEYSTORE_KEY_ALIAS`, `KEYSTORE_KEY_PASSWORD`
 
----
+만드는 방법은 [PLAY_STORE.md 1단계](PLAY_STORE.md#1-업로드-키-만들기-필수-제일-먼저)에 있습니다.
+
+> ⚠️ 초기 커밋에 들어 있던 `keystore/henny-family.jks`(비밀번호 `hennyfamily`)는 삭제했습니다.
+> 공개 저장소에 노출됐던 키라 **다시 쓰면 안 됩니다.** git 기록에는 남아 있습니다.
 
 ## 7. 기술 메모
 
@@ -162,6 +167,7 @@ CI가 매번 같은 키로 서명해야 **덮어 설치할 때 데이터가 유�
 - 네트워크 라이브러리 없음 — `HttpURLConnection` 하나
 - WorkManager 없음 — 앱을 열 때 / 알람이 울릴 때 / 체크 후 12초 뒤에만 동기화
 - R8 축소 + 리소스 축소 적용 — 릴리스 APK 약 1MB
+- compileSdk / targetSdk 36 (Android 16), Play용 AAB와 사이드로딩용 APK를 함께 빌드
 
 로컬 빌드:
 
@@ -189,4 +195,8 @@ app/src/main/java/com/henny/checklist/
     BootReceiver.kt      재부팅 후 재예약
     Notifications.kt     알림 채널과 표시
   ui/                    Compose 화면들
+docs/                    GitHub Pages로 올리는 개인정보처리방침
+store/                   Play 스토어 등록정보용 아이콘·기능 그래픽
+tools/make_store_graphics.py   위 그래픽 생성 스크립트
+PLAY_STORE.md            플레이 출시 절차
 ```

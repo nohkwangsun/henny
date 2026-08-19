@@ -440,6 +440,34 @@ class Repository private constructor(private val app: Context) {
         )
     }
 
+    /**
+     * 이 가족이 남긴 자료를 원격과 이 폰 양쪽에서 지운다.
+     * Play 의 "사용자가 데이터 삭제를 요청할 수 있는가"에 대한 답이기도 하다.
+     * 저장소 접속 설정은 남겨 두므로 지운 뒤 바로 다시 쓸 수 있다.
+     */
+    suspend fun wipeAllData(): Result<Unit> = runCatching {
+        val s = _settings.value
+        val net = remote()
+        if (net.configured) {
+            withContext(Dispatchers.IO) {
+                s.progressBins.values.filter { it.isNotBlank() }.forEach { handle ->
+                    net.put(handle, EMPTY_DOC)
+                }
+                if (s.roleEnum == Role.PARENT && s.planBin.isNotBlank()) {
+                    net.put(s.planBin, EMPTY_DOC)
+                }
+            }
+        }
+        val cleared = _progress.value.keys.associateWith { Progress(childId = it) }
+        cleared.values.forEach { store.saveProgress(it) }
+        _progress.value = cleared
+
+        val emptyPlan = Plan(updatedAt = System.currentTimeMillis())
+        _plan.value = emptyPlan
+        store.savePlan(emptyPlan)
+        AlarmScheduler.reschedule(app)
+    }
+
     // ------------------------------------------------------------ 연결 코드
 
     /** 아이 기기에 붙여넣을 코드. 백엔드 접속 정보 + 그 아이의 문서 손잡이. */
@@ -514,6 +542,7 @@ class Repository private constructor(private val app: Context) {
 
     companion object {
         private const val PUSH_DEBOUNCE_MS = 12_000L
+        private const val EMPTY_DOC = "{\"schema\":1,\"updatedAt\":0}"
 
         @Volatile
         private var instance: Repository? = null
