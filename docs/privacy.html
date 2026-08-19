@@ -75,6 +75,10 @@
 <p>부모가 가족 저장소를 설정하면, 위 1번 표의 자료가 <strong>부모가 직접 고른 저장 서비스로만</strong>
 HTTPS로 전송됩니다. 선택지는 다음과 같습니다.</p>
 <ul>
+  <li><strong>구글 Firebase 실시간 데이터베이스</strong> — 이용자 본인의 구글 계정으로 만든
+      프로젝트. 구글의
+      <a href="https://firebase.google.com/support/privacy" rel="noopener">Firebase 개인정보 및 보안</a>
+      정책이 적용됩니다.</li>
   <li><strong>JSONBin.io</strong> — 이용자 본인의 무료 계정. 해당 서비스의
       <a href="https://jsonbin.io/privacy-policy" rel="noopener">개인정보처리방침</a>이 적용됩니다.</li>
   <li><strong>이용자가 직접 입력한 JSON 주소</strong> — jsonblob.com, npoint.io 등
@@ -105,7 +109,7 @@ HTTPS로 전송됩니다. 선택지는 다음과 같습니다.</p>
   <li><strong>앱 안에서:</strong> 설정 → <strong>모든 데이터 지우기</strong>.
       이 폰의 기록과 가족 저장소의 문서를 함께 비웁니다.</li>
   <li><strong>기기에서만:</strong> 앱을 삭제하면 그 기기의 자료가 모두 사라집니다.</li>
-  <li><strong>저장 서비스에서:</strong> 이용자 본인의 JSONBin 등 계정에서 해당 문서를 직접 삭제할 수 있습니다.</li>
+  <li><strong>저장 서비스에서:</strong> 이용자 본인의 Firebase 콘솔이나 JSONBin 계정에서 해당 자료를 직접 삭제할 수 있습니다.</li>
 </ul>
 <p>개발자는 어떤 자료도 보관하고 있지 않으므로, 개발자에게 삭제를 요청할 대상 자료가 없습니다.</p>
 
@@ -154,7 +158,8 @@ profiling, no sale of data.</p>
 <h2>Transmission</h2>
 <p>With the default setting (&ldquo;no sync&rdquo;), nothing leaves the device. If the parent
 configures a family store, the data above is sent over HTTPS <strong>only</strong> to the service the
-parent chose &mdash; their own JSONBin.io account, or a JSON URL they supply. Those services are
+parent chose &mdash; their own Google Firebase Realtime Database project, their own JSONBin.io
+account, or a JSON URL they supply. Those services are
 operated under the user's own account and are governed by their own privacy policies. The developer
 has no access to them and receives nothing.</p>
 
