@@ -206,22 +206,30 @@ class Repository private constructor(private val app: Context) {
         return statFor(childId, first, first.plusMonths(1).minusDays(1))
     }
 
-    /** 오늘까지 연속으로 "할 일을 다 한" 날 수. */
+    /**
+     * 연속으로 "할 일을 다 한" 날 수.
+     * 할 일이 없던 날(주말 등)은 건너뛰고, 아직 진행 중인 오늘은 연속을 끊지 않는다.
+     */
     fun streak(childId: String): Int {
+        val today = LocalDate.now()
+        val logs = progressOf(childId).days
         var count = 0
-        var d = LocalDate.now()
+        var d = today
         repeat(400) {
-            val expected = progressOf(childId).days[d.key()]?.total ?: expectedCount(childId, d)
+            val expected = logs[d.key()]?.total ?: expectedCount(childId, d)
             if (expected == 0) {
                 d = d.minusDays(1)
                 return@repeat
             }
-            val done = progressOf(childId).days[d.key()]?.doneCount ?: 0
-            if (done >= expected) {
-                count++
-                d = d.minusDays(1)
-            } else {
-                return count
+            val done = logs[d.key()]?.doneCount ?: 0
+            when {
+                done >= expected -> {
+                    count++
+                    d = d.minusDays(1)
+                }
+                // 오늘은 아직 하루가 안 끝났으니 실패로 세지 않는다.
+                d == today -> d = d.minusDays(1)
+                else -> return count
             }
         }
         return count
