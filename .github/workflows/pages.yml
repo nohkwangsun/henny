@@ -7,9 +7,6 @@ on:
   push:
     branches:
       - main
-      # main 브랜치를 만들기 전까지 쓰는 임시 항목입니다.
-      # main 이 생기면 아래 줄을 지우세요. 그래야 개발 브랜치가 배포되지 않습니다.
-      - claude/kids-daily-checklist-app-qxag7j
     paths:
       - 'web/**'
       - 'docs/**'
