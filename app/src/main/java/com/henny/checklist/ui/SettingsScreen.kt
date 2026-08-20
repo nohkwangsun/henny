@@ -68,6 +68,7 @@ fun SettingsScreen(
     var pairing by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var wiping by remember { mutableStateOf(false) }
+    var showBackup by remember { mutableStateOf(false) }
 
     Column(
         Modifier
@@ -351,6 +352,39 @@ fun SettingsScreen(
                 else "${repo.workerName(settings.workerId)}의 기기",
                 style = MaterialTheme.typography.bodyLarge
             )
+            Text(
+                text = "버전 ${appVersion(context)}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            val broken = remember(settings) { repo.brokenFiles() }
+            if (broken.isNotEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "이전 버전의 저장 형식을 읽지 못해 새로 시작했습니다. " +
+                        "팀 저장소를 쓰고 있으면 잠시 뒤 자료가 다시 내려옵니다.",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.error
+                )
+                TextButton(onClick = { repo.clearBrokenFiles() }) { Text("알림 지우기") }
+            }
+
+            if (isManager) {
+                Spacer(Modifier.height(10.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+                Spacer(Modifier.height(10.dp))
+                Text("복구 코드", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    "폰을 바꾸거나 앱을 지웠다 깔 때 이 코드를 넣으면 원래 자료로 돌아옵니다. " +
+                        "지금 어딘가에 저장해 두세요.",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(6.dp))
+                OutlinedButton(onClick = { showBackup = true }) { Text("복구 코드 보기") }
+            }
+
             Spacer(Modifier.height(8.dp))
             TextButton(onClick = {
                 repo.updateSettings { Settings() }
@@ -398,6 +432,38 @@ fun SettingsScreen(
                 }) { Text("삭제", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = { TextButton(onClick = { deleting = null }) { Text("취소") } }
+        )
+    }
+
+    if (showBackup) {
+        val code = repo.managerBackupCode()
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showBackup = false },
+            title = { Text("관리자 복구 코드") },
+            text = {
+                Column {
+                    Text(
+                        "이 코드에는 팀 저장소 접속 정보와 모든 문서 주소가 들어 있습니다. " +
+                            "다른 사람에게 보내지 마세요.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = code,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    clipboard.setText(AnnotatedString(code))
+                    Toast.makeText(context, "복사했습니다", Toast.LENGTH_SHORT).show()
+                }) { Text("복사") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBackup = false }) { Text("닫기") }
+            }
         )
     }
 
@@ -493,8 +559,8 @@ fun SettingsScreen(
     if (pairing) {
         TextPromptDialog(
             title = "연결 코드 입력",
-            label = "관리자가 보내준 코드",
-            placeholder = "HENNY1:...",
+            label = "연결 코드 또는 복구 코드",
+            placeholder = "HENNY2:...",
             confirmText = "연결",
             onConfirm = { raw ->
                 val result = repo.applyPairingCode(raw)
@@ -529,3 +595,11 @@ private fun backendHelp(backend: Backend): String = when (backend) {
     Backend.JSONBIN -> "jsonbin.io 에 가족용 문서를 만들어 주고받습니다. 무료 계정의 Master Key만 있으면 돼요."
     Backend.HTTP -> "GET/PUT 이 되는 아무 JSON 주소나 쓸 수 있어요. (jsonblob.com, npoint.io 등)"
 }
+
+
+/** 설정 화면에 보여줄 앱 버전. 업데이트가 실제로 반영됐는지 눈으로 확인할 수 있다. */
+private fun appVersion(context: android.content.Context): String = runCatching {
+    val info = context.packageManager.getPackageInfo(context.packageName, 0)
+    val code = androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(info)
+    "${info.versionName} ($code)"
+}.getOrDefault("알 수 없음")

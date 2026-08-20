@@ -88,6 +88,11 @@ fun SetupScreen(repo: Repository, plan: Plan, settings: Settings) {
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("작업자 기기예요") }
+                    Spacer(Modifier.height(10.dp))
+                    TextButton(
+                        onClick = { step = Step.WORKER_PAIR },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("쓰던 기기 복구 (코드 있음)") }
                 }
             }
 
@@ -187,12 +192,12 @@ fun SetupScreen(repo: Repository, plan: Plan, settings: Settings) {
             }
 
             Step.WORKER_PAIR -> {
-                SectionCard(title = "관리자가 준 코드를 붙여넣으세요") {
+                SectionCard(title = "코드를 붙여넣으세요") {
                     OutlinedTextField(
                         value = code,
                         onValueChange = { code = it },
-                        label = { Text("연결 코드") },
-                        placeholder = { Text("HENNY1:...") },
+                        label = { Text("연결 코드 또는 복구 코드") },
+                        placeholder = { Text("HENNY2:...") },
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(Modifier.height(12.dp))

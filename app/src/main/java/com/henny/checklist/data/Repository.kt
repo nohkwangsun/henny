@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
 import java.time.LocalDate
 import java.util.UUID
 
@@ -84,6 +85,11 @@ class Repository private constructor(private val app: Context) {
 
     fun progressOf(workerId: String): Progress =
         _progress.value[workerId] ?: Progress(workerId = workerId)
+
+    /** 형식이 안 맞아 밀려난 파일 목록. 설정 화면에서 알려 주려고 쓴다. */
+    fun brokenFiles(): List<String> = store.brokenFiles()
+
+    fun clearBrokenFiles() = store.clearBrokenFiles()
 
     fun workerName(workerId: String): String =
         _plan.value.workers.firstOrNull { it.id == workerId }?.name ?: "이름 없음"
@@ -589,55 +595,93 @@ class Repository private constructor(private val app: Context) {
 
     // ------------------------------------------------------------ 연결 코드
 
-    /** 작업자 기기에 붙여넣을 코드. 백엔드 접속 정보 + 그 작업자의 문서 손잡이. */
-    fun pairingCode(workerId: String): String {
-        val s = _settings.value
-        val payload = buildString {
-            append("{")
-            append("\"v\":1,")
-            append("\"b\":\"${s.backend}\",")
-            append("\"k\":\"${s.apiKey.escape()}\",")
-            append("\"p\":\"${s.planBin.escape()}\",")
-            append("\"c\":\"${workerId.escape()}\",")
-            append("\"g\":\"${(s.progressBins[workerId] ?: "").escape()}\",")
-            append("\"n\":\"${workerName(workerId).escape()}\"")
-            append("}")
-        }
-        val b64 = Base64.encodeToString(
-            payload.toByteArray(Charsets.UTF_8),
+    /**
+     * 기기끼리 주고받는 연결 코드의 알맹이.
+     *
+     * 작업자용은 그 작업자의 문서 하나만 담고, 관리자용은 모든 문서를 담는다.
+     * 관리자용은 곧 **복구 코드**이기도 하다. 폰을 갈아엎거나 앱을 지웠다 깔아도
+     * 이 코드만 있으면 원래 쓰던 저장 경로로 그대로 돌아온다.
+     */
+    @Serializable
+    private data class PairPayload(
+        val v: Int = 2,
+        val role: String = Role.WORKER.name,
+        val backend: String = Backend.NONE.name,
+        val apiKey: String = "",
+        val firebaseDb: String = "",
+        val planBin: String = "",
+        val bins: Map<String, String> = emptyMap(),
+        val name: String = ""
+    )
+
+    private fun encodeCode(payload: PairPayload): String {
+        val body = Base64.encodeToString(
+            store.encodeAny(payload).toByteArray(Charsets.UTF_8),
             Base64.NO_WRAP or Base64.URL_SAFE
         )
-        return "HENNY1:$b64"
+        return "HENNY2:$body"
     }
 
-    /** 작업자 기기에서 코드를 받아 설정을 채운다. */
+    /** 작업자 기기에 붙여넣을 코드. 그 작업자의 문서 하나만 담는다. */
+    fun pairingCode(workerId: String): String {
+        val s = _settings.value
+        return encodeCode(
+            PairPayload(
+                role = Role.WORKER.name,
+                backend = s.backend,
+                apiKey = s.apiKey,
+                firebaseDb = s.firebaseDb,
+                planBin = s.planBin,
+                bins = mapOf(workerId to (s.progressBins[workerId] ?: "")),
+                name = workerName(workerId)
+            )
+        )
+    }
+
+    /**
+     * 관리자 기기 복구 코드. 저장 경로 전부를 담는다.
+     * 앱을 지웠다 깔아도 이 코드를 넣으면 기존 자료로 되돌아온다.
+     */
+    fun managerBackupCode(): String {
+        val s = _settings.value
+        return encodeCode(
+            PairPayload(
+                role = Role.MANAGER.name,
+                backend = s.backend,
+                apiKey = s.apiKey,
+                firebaseDb = s.firebaseDb,
+                planBin = s.planBin,
+                bins = s.progressBins,
+                name = "관리자"
+            )
+        )
+    }
+
+    /** 연결 코드나 복구 코드를 받아 이 기기 설정을 채운다. */
     fun applyPairingCode(raw: String): Result<String> = runCatching {
-        val body = raw.trim().removePrefix("HENNY1:").trim()
+        val body = raw.trim().removePrefix("HENNY2:").removePrefix("HENNY1:").trim()
         val text = String(Base64.decode(body, Base64.URL_SAFE), Charsets.UTF_8)
-        fun field(name: String): String {
-            val m = Regex("\"$name\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"").find(text)
-                ?: return ""
-            return m.groupValues[1].unescape()
-        }
-        val workerId = field("c")
-        require(workerId.isNotBlank()) { "코드에 작업자 정보가 없습니다." }
+        val payload = store.decodeAny<PairPayload>(text)
+
+        val isManager = payload.role == Role.MANAGER.name
+        val workerId = payload.bins.keys.firstOrNull().orEmpty()
+        require(isManager || workerId.isNotBlank()) { "코드에 작업자 정보가 없습니다." }
+
         updateSettings {
             it.copy(
-                role = Role.WORKER.name,
-                workerId = workerId,
-                backend = field("b").ifBlank { Backend.NONE.name },
-                apiKey = field("k"),
-                planBin = field("p"),
-                progressBins = mapOf(workerId to field("g")),
+                role = payload.role,
+                workerId = if (isManager) "" else workerId,
+                backend = payload.backend.ifBlank { Backend.NONE.name },
+                apiKey = payload.apiKey,
+                firebaseDb = payload.firebaseDb,
+                planBin = payload.planBin,
+                progressBins = payload.bins,
                 setupDone = true
             )
         }
         reloadProgress()
-        field("n").ifBlank { "이름 없음" }
+        payload.name.ifBlank { if (isManager) "관리자" else "작업자" }
     }
-
-    private fun String.escape() = replace("\\", "\\\\").replace("\"", "\\\"")
-    private fun String.unescape() = replace("\\\"", "\"").replace("\\\\", "\\")
 
     /** 관리자 기기: 계획 + 작업자별 기록용 저장 공간을 준비한다. */
     suspend fun provisionBins(): Result<Unit> = runCatching {
@@ -654,6 +698,9 @@ class Repository private constructor(private val app: Context) {
             require(base.startsWith("https://")) { "Firebase 데이터베이스 주소를 확인해 주세요." }
             // 경로 한 칸을 추측 불가능한 값으로 두면, 규칙만으로도 남이 우리 자료를
             // 찾아낼 수 없다. 이미 만들어 둔 값이 있으면 그대로 다시 쓴다.
+            // 이미 쓰던 경로가 있으면 반드시 그대로 다시 쓴다. 새로 만들면 그동안 쌓인
+            // 자료가 통째로 고아가 된다. 기기를 갈아엎었다면 복구 코드로 planBin 을
+            // 먼저 되돌려 놓고 이 함수를 부르는 것이 정상 경로다.
             val family = FAMILY_PATH.find(s.planBin)?.groupValues?.get(1)
                 ?: UUID.randomUUID().toString().replace("-", "")
             planBin = "$base/henny/$family/plan.json"
