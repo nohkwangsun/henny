@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   웹 화면이 어두운 배색으로 바뀌면 시스템 막대 자리도 같이 어두워야 한다.
-  값은 web/app.css 의 --bg 어두운 쪽과 같다.
+  값은 web/app.css 의 어두운 배경(bg 토큰)과 같다.
 -->
 <resources>
     <color name="henny_background">#FF14171A</color>
