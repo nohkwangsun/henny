@@ -123,7 +123,7 @@ await check('작업자 연결 코드가 나온다', async () => {
 console.log('작업자 기기');
 const worker = await device('작업자');
 await check('코드를 넣으면 관리자가 만든 작업이 내려온다', async () => {
-  await worker.click('[data-act="role-worker"]');
+  await worker.click('[data-act="go-code"]');
   await worker.fill('#code-input', code);
   await worker.click('[data-act="apply-code"]');
   await worker.waitForTimeout(1500);
@@ -152,6 +152,67 @@ await check('관리자가 동기화하면 완료가 보인다', async () => {
 await check('통계 탭이 열린다', async () => {
   await manager.click('[data-act="tab"][data-id="STATS"]');
   if (!(await html(manager)).includes('민준')) throw new Error('통계에 작업자가 없다');
+});
+
+console.log('관리자 두 번째 기기');
+let managerCode = null;
+await check('관리자 코드가 나온다', async () => {
+  await manager.click('[data-act="tab"][data-id="SET"]');
+  await manager.click('[data-act="backup-code"]');
+  await manager.waitForTimeout(300);
+  const found = /HENNY2:[A-Za-z0-9_\-=]+/.exec(await html(manager));
+  if (!found) throw new Error('관리자 코드를 찾지 못했다');
+  managerCode = found[0];
+  await manager.click('.backdrop', { position: { x: 5, y: 5 } });
+  await manager.waitForTimeout(300);
+});
+
+const manager2 = await device('관리자2');
+await check('관리자 코드로 두 번째 관리자가 붙는다', async () => {
+  await manager2.click('[data-act="go-code"]');
+  await manager2.fill('#code-input', managerCode);
+  await manager2.click('[data-act="apply-code"]');
+  await manager2.waitForTimeout(1500);
+  const h = await html(manager2);
+  if (!h.includes('민준') || !h.includes('서준')) throw new Error('팀이 안 내려왔다');
+});
+
+await check('두 관리자가 각자 더한 작업이 모두 남는다', async () => {
+  await manager2.click('[data-act="tab"][data-id="TASKS"]');
+  await manager2.click('[data-act="add-routine"]');
+  await manager2.fill('#m-title', '독해 문제집 2장');
+  await manager2.click('[data-act="confirm"]');
+  await waitUpload((v) => v.includes('독해 문제집 2장'), '두 번째 관리자의 작업');
+
+  await manager.click('[data-act="tab"][data-id="TODAY"]');
+  await manager.click('[data-act="sync"]');
+  await manager.waitForTimeout(1500);
+  await manager.click('[data-act="tab"][data-id="TASKS"]');
+  const h = await html(manager);
+  // 첫 관리자가 만든 것이 두 번째 관리자의 저장으로 밀려나면 안 된다.
+  if (!h.includes('수학 문제집 2장')) throw new Error('첫 관리자의 작업이 사라졌다');
+  if (!h.includes('독해 문제집 2장')) throw new Error('두 번째 관리자의 작업이 안 보인다');
+});
+
+await check('한쪽에서 지우면 다른 쪽에서도 지워진다', async () => {
+  await manager2.click('[data-act="tab"][data-id="TODAY"]');
+  await manager2.click('[data-act="sync"]');
+  await manager2.waitForTimeout(1500);
+  await manager2.click('[data-act="tab"][data-id="TASKS"]');
+  // 삭제는 정기 작업을 열어야 나온다.
+  const edit = await manager2.$$('[data-act="edit-routine"]');
+  if (!edit.length) throw new Error('수정 버튼이 없다');
+  await edit[0].click();
+  await manager2.waitForTimeout(300);
+  await manager2.click('[data-act="del-routine-now"]');
+  await manager2.waitForTimeout(2500);
+
+  await manager.click('[data-act="tab"][data-id="TODAY"]');
+  await manager.click('[data-act="sync"]');
+  await manager.waitForTimeout(1500);
+  await manager.click('[data-act="tab"][data-id="TASKS"]');
+  const rows = (await html(manager)).match(/문제집 2장/g) || [];
+  if (rows.length !== 1) throw new Error(`지운 뒤 남은 작업이 ${rows.length}개다 (1개여야 함)`);
 });
 
 await check('앱에 넘길 알람 일정이 만들어진다', async () => {

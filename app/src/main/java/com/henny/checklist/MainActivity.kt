@@ -48,6 +48,9 @@ class MainActivity : ComponentActivity() {
             // 배포 즉시 반영이 목적이므로 캐시보다 네트워크를 먼저 본다.
             settings.cacheMode = WebSettings.LOAD_DEFAULT
             settings.mediaPlaybackRequiresUserGesture = true
+            // 안쪽으로 민 자리(상태바 아래)는 WebView 자신의 배경색이 보인다.
+            // 웹 배경과 다르면 띠가 생기므로 같은 값을 쓴다.
+            setBackgroundColor(getColor(R.color.henny_background))
             addJavascriptInterface(Bridge(), "HennyShell")
             webViewClient = object : WebViewClient() {
                 override fun onReceivedError(
@@ -63,6 +66,18 @@ class MainActivity : ComponentActivity() {
             }
         }
         setContentView(web)
+
+        // targetSdk 35 부터는 앱이 상태바·내비게이션바 뒤까지 그린다. 그대로 두면
+        // 웹 화면 맨 윗줄이 시계와 겹친다. 시스템 막대 높이만큼 안쪽으로 민다.
+        // 화면 회전이나 키보드로 값이 바뀌므로 매번 다시 받는다.
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(web) { view, insets ->
+            val bars = insets.getInsets(
+                androidx.core.view.WindowInsetsCompat.Type.systemBars()
+                    or androidx.core.view.WindowInsetsCompat.Type.displayCutout()
+            )
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            insets
+        }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -89,6 +104,41 @@ class MainActivity : ComponentActivity() {
         fun setSchedule(json: String) {
             ScheduleStore.save(this@MainActivity, json)
             onMain { AlarmScheduler.reschedule(this@MainActivity) }
+        }
+
+        /**
+         * Compose 시절 앱이 filesDir/henny/ 에 남긴 JSON 을 그대로 넘긴다.
+         *
+         * 그때는 파일에, 지금은 WebView 의 localStorage 에 담는다. 자리가 다르니
+         * 덮어 설치하면 화면이 빈 채로 뜬다. 파일은 지워지지 않고 그대로 있으므로
+         * 웹이 처음 열릴 때 한 번 읽어 옮긴다. 자료 구조는 그때와 같다.
+         *
+         * 읽기만 한다. 옮긴 뒤에도 파일을 지우지 않는다. 옮기다 잘못돼도 원본이
+         * 남아 있어야 다시 시도할 수 있다.
+         */
+        @JavascriptInterface
+        fun legacyData(): String {
+            val dir = java.io.File(filesDir, "henny")
+            if (!dir.isDirectory) return ""
+            val out = StringBuilder("{")
+            var first = true
+            fun put(key: String, raw: String) {
+                if (!first) out.append(',')
+                first = false
+                out.append(org.json.JSONObject.quote(key)).append(':').append(raw)
+            }
+            runCatching {
+                dir.listFiles()?.forEach { f ->
+                    if (!f.isFile || !f.name.endsWith(".json")) return@forEach
+                    val text = f.readText().trim()
+                    if (text.isEmpty() || !text.startsWith("{")) return@forEach
+                    // 형식이 깨진 파일을 넘기면 웹 쪽 JSON.parse 가 통째로 실패한다.
+                    if (runCatching { org.json.JSONObject(text) }.isFailure) return@forEach
+                    put(f.name, text)
+                }
+            }
+            out.append('}')
+            return if (first) "" else out.toString()
         }
 
         @JavascriptInterface

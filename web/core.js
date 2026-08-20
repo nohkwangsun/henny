@@ -77,6 +77,47 @@ function save(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* 용량 초과 */ }
 }
 
+const MIGRATED = 'henny.migrated';
+
+/**
+ * Compose 시절 앱이 파일로 남긴 자료를 localStorage 로 옮긴다.
+ *
+ * 그때는 앱이 파일에, 지금은 WebView 가 localStorage 에 담는다. 자리가 달라서
+ * 덮어 설치하면 화면이 빈 채로 뜬다. 파일은 남아 있으므로 처음 한 번 읽어 온다.
+ * 자료 구조가 그때와 같아 그대로 넣으면 된다.
+ *
+ * 이미 이 기기에서 쓰던 자료가 있으면 건드리지 않는다. 덮어쓰면 최신 기록이
+ * 옛 파일로 되돌아간다.
+ */
+export function importLegacy() {
+  if (localStorage.getItem(MIGRATED)) return null;
+  let raw = '';
+  try { raw = window.HennyShell?.legacyData?.() || ''; } catch (_) { return null; }
+  if (!raw) return null;
+
+  let files;
+  try { files = JSON.parse(raw); } catch (_) { return null; }
+
+  const moved = [];
+  const take = (fileName, key) => {
+    if (!files[fileName]) return;
+    if (localStorage.getItem(key)) return;
+    localStorage.setItem(key, JSON.stringify(files[fileName]));
+    moved.push(key);
+  };
+
+  take('settings.json', KEYS.settings);
+  take('plan.json', KEYS.plan);
+  Object.keys(files).forEach((name) => {
+    const found = /^progress_(.+)\.json$/.exec(name);
+    if (found) take(name, KEYS.progress + found[1]);
+  });
+
+  // 옮길 게 없었더라도 표시는 남긴다. 매번 다리를 두드릴 이유가 없다.
+  localStorage.setItem(MIGRATED, String(Date.now()));
+  return moved.length ? moved : null;
+}
+
 export const EMPTY_SETTINGS = {
   role: 'NONE',
   workerId: '',
@@ -94,6 +135,8 @@ export const EMPTY_SETTINGS = {
 
 export const EMPTY_PLAN = {
   schema: 1, updatedAt: 0, workers: [], routines: [], assignments: [], reminders: [],
+  // 지운 항목 id -> 지운 시각. 관리자가 여럿일 때 삭제가 되살아나지 않게 한다.
+  deleted: {},
 };
 
 const emptyProgress = (workerId) => ({
@@ -369,7 +412,8 @@ export class Repo {
 
   // --- 계획 수정
   mutatePlan(fn) {
-    const next = { ...fn(this.plan), updatedAt: Date.now() };
+    const now = Date.now();
+    const next = stampPlan(this.plan, { ...fn(this.plan) }, now);
     this.plan = next;
     save(KEYS.plan, next);
     this.reloadProgress();
@@ -501,12 +545,21 @@ export class Repo {
     if (s.planBin) {
       const text = await net.get(s.planBin);
       const remotePlan = text ? safeParse(text) : null;
-      if (remotePlan && remotePlan.updatedAt > this.plan.updatedAt) {
-        this.plan = { ...EMPTY_PLAN, ...remotePlan };
-        save(KEYS.plan, this.plan);
-        this.reloadProgress();
-      } else if (!remotePlan || remotePlan.updatedAt < this.plan.updatedAt) {
+      if (!remotePlan) {
         await net.put(s.planBin, JSON.stringify(this.plan));
+      } else {
+        // 관리자가 여럿일 수 있다. 늦게 올린 쪽으로 통째로 갈아치우면 그사이
+        // 다른 관리자가 더한 작업이 사라진다. 항목 단위로 합친다.
+        const remote = { ...EMPTY_PLAN, ...remotePlan };
+        const merged = mergePlans(this.plan, remote);
+        if (JSON.stringify(merged) !== JSON.stringify(this.plan)) {
+          this.plan = merged;
+          save(KEYS.plan, merged);
+          this.reloadProgress();
+        }
+        if (JSON.stringify(merged) !== JSON.stringify(remote)) {
+          await net.put(s.planBin, JSON.stringify(merged));
+        }
       }
     }
     for (const worker of this.plan.workers) {
@@ -693,6 +746,78 @@ function safeParse(text) {
 }
 
 /** 날짜별로 더 최근에 손댄 쪽을 채택한다. */
+const PLAN_LISTS = ['workers', 'routines', 'assignments', 'reminders'];
+const TOMBSTONE_KEEP_MS = 90 * 24 * 60 * 60 * 1000;
+
+/**
+ * 바뀐 항목에만 시각을 찍고, 사라진 항목은 지웠다는 표시를 남긴다.
+ *
+ * 관리자가 둘 이상이면 두 기기가 각자 계획을 고친다. 문서 전체의 시각만
+ * 보고 늦게 올린 쪽을 택하면, 그사이 다른 관리자가 더한 작업이 통째로
+ * 사라진다. 항목마다 시각이 있어야 합칠 수 있다.
+ *
+ * 지웠다는 표시가 없으면 합칠 때 상대가 아직 들고 있는 항목이 되살아난다.
+ * 그래서 삭제도 기록으로 남긴다. 90일이 지나면 정리한다.
+ */
+function stampPlan(prev, next, now) {
+  const deleted = { ...(prev.deleted || {}), ...(next.deleted || {}) };
+
+  PLAN_LISTS.forEach((list) => {
+    const before = new Map((prev[list] || []).map((x) => [x.id, x]));
+    const after = next[list] || [];
+
+    next[list] = after.map((item) => {
+      const old = before.get(item.id);
+      // 내용이 그대로면 시각도 그대로 둔다. 안 그러면 안 고친 항목이
+      // 매번 최신이 되어 다른 관리자의 수정을 밀어낸다.
+      if (old && sameItem(old, item)) return old;
+      return { ...item, updatedAt: now };
+    });
+
+    const alive = new Set(after.map((x) => x.id));
+    before.forEach((_, id) => { if (!alive.has(id)) deleted[id] = now; });
+  });
+
+  const cutoff = now - TOMBSTONE_KEEP_MS;
+  Object.keys(deleted).forEach((id) => { if (deleted[id] < cutoff) delete deleted[id]; });
+
+  return { ...next, deleted, updatedAt: now };
+}
+
+/** updatedAt 을 뺀 내용이 같은지. */
+function sameItem(a, b) {
+  const strip = (x) => { const { updatedAt, ...rest } = x; return JSON.stringify(rest); };
+  return strip(a) === strip(b);
+}
+
+/**
+ * 계획 두 벌을 항목 단위로 합친다. 관리자가 여럿일 때 쓴다.
+ * 같은 항목은 나중에 고친 쪽을, 지운 표시가 더 나중이면 삭제를 따른다.
+ */
+export function mergePlans(a, b) {
+  const deleted = { ...(a.deleted || {}) };
+  Object.entries(b.deleted || {}).forEach(([id, at]) => {
+    if (!deleted[id] || at > deleted[id]) deleted[id] = at;
+  });
+
+  const out = { ...a, deleted, updatedAt: Math.max(a.updatedAt || 0, b.updatedAt || 0) };
+
+  PLAN_LISTS.forEach((list) => {
+    const byId = new Map();
+    const order = [];
+    [...(a[list] || []), ...(b[list] || [])].forEach((item) => {
+      const cur = byId.get(item.id);
+      if (!cur) { byId.set(item.id, item); order.push(item.id); return; }
+      if ((item.updatedAt || 0) > (cur.updatedAt || 0)) byId.set(item.id, item);
+    });
+    out[list] = order
+      .map((id) => byId.get(id))
+      .filter((item) => !(deleted[item.id] > (item.updatedAt || 0)));
+  });
+
+  return out;
+}
+
 function mergeProgress(a, b) {
   const days = { ...a.days };
   Object.entries(b.days || {}).forEach(([k, v]) => {

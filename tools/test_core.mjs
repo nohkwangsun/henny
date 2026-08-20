@@ -21,8 +21,8 @@ globalThis.localStorage = new Proxy(globalThis.localStorage, {
 });
 globalThis.window = { HennyShell: null };
 
-const { Repo, dateKey, addDays, computeSchedule, minuteToText, daysText, isoDow, DEFAULT_POINTS } =
-  await import('../web/core.js');
+const { Repo, dateKey, addDays, computeSchedule, minuteToText, daysText, isoDow, DEFAULT_POINTS,
+  mergePlans, importLegacy } = await import('../web/core.js');
 
 let pass = 0;
 const fails = [];
@@ -54,10 +54,15 @@ ok('기본 알림 3개', repo.plan.reminders.filter((r) => r.workerId === w.id).
 // 오늘 요일에 걸리는 정기 작업 두 개
 const today = new Date();
 const dow = isoDow(today);
+const tomorrowDow = dow === 7 ? 1 : dow + 1;
 repo.addRoutine(w.id, '일일 점검표 작성', [dow], 17 * 60, 100);
 repo.addRoutine(w.id, '재고 확인', [dow], null, 200);
 // 다른 요일에만 걸리는 것은 오늘 안 나와야 한다
-repo.addRoutine(w.id, '주말 정리', [dow === 7 ? 1 : dow + 1], null, 50);
+repo.addRoutine(w.id, '주말 정리', [tomorrowDow], null, 50);
+// 마감 알림 검사용으로 내일치를 하나 더 둔다. 오늘 걸로 두면 실행 시각에 따라
+// (예: 이미 17시가 지난 뒤 돌면) 마감이 지나 알림이 걸러지고 검사가 흔들린다.
+// 내일은 언제 돌려도 항상 미래이므로 시각에 좌우되지 않는다.
+repo.addRoutine(w.id, '내일 마감 점검', [tomorrowDow], 12 * 60, 80);
 
 let tasks = repo.tasksFor(w.id, today);
 check('오늘 작업 수', tasks.length, 2);
@@ -148,6 +153,74 @@ check('복구 코드로 모든 주소 복원', repo3.settings.progressBins, repo
 // 복구한 관리자가 provision 을 불러도 기존 경로를 지켜야 한다
 repo3.provision();
 check('복구 후에도 경로 유지', repo3.settings.planBin, planBin1);
+
+// --- 관리자가 여럿일 때 계획 합치기
+// 두 관리자가 각자 하나씩 더했다. 둘 다 남아야 한다.
+{
+  const base = { schema: 1, updatedAt: 100, workers: [], routines: [], assignments: [], reminders: [], deleted: {} };
+  const a = { ...base, updatedAt: 200, routines: [{ id: 't1', title: '가', updatedAt: 200 }] };
+  const b = { ...base, updatedAt: 300, routines: [{ id: 't2', title: '나', updatedAt: 300 }] };
+  const m = mergePlans(a, b);
+  check('관리자 둘이 더한 작업이 모두 남는다', m.routines.map((r) => r.id).sort(), ['t1', 't2']);
+
+  // 같은 항목을 둘이 고쳤으면 나중 것을 따른다
+  const c = { ...base, routines: [{ id: 't1', title: '먼저', updatedAt: 100 }] };
+  const d = { ...base, routines: [{ id: 't1', title: '나중', updatedAt: 500 }] };
+  check('같은 작업은 나중 수정이 이긴다', mergePlans(c, d).routines[0].title, '나중');
+  check('합치는 순서가 결과를 바꾸지 않는다', mergePlans(d, c).routines[0].title, '나중');
+
+  // 한쪽이 지웠으면 상대가 들고 있어도 되살아나지 않는다
+  const e = { ...base, routines: [{ id: 't1', title: '가', updatedAt: 100 }] };
+  const f = { ...base, routines: [], deleted: { t1: 400 } };
+  check('지운 작업이 되살아나지 않는다', mergePlans(e, f).routines.length, 0);
+
+  // 지운 뒤 다시 만들었으면 살아 있어야 한다
+  const g = { ...base, routines: [{ id: 't1', title: '다시', updatedAt: 900 }] };
+  check('지운 뒤 다시 만든 작업은 남는다', mergePlans(g, f).routines.length, 1);
+}
+
+// 실제 Repo 로도 확인한다. 항목을 고치지 않았으면 시각이 그대로여야
+// 다른 관리자의 수정을 밀어내지 않는다.
+{
+  const r = new Repo();
+  r.updateSettings({ role: 'MANAGER', setupDone: true });
+  const w = r.addWorker('두관리자');
+  r.addRoutine(w.id, '첫 작업', [1, 2, 3, 4, 5], null, 100);
+  const before = r.plan.routines[0].updatedAt;
+  ok('고친 항목에 시각이 찍힌다', typeof before === 'number' && before > 0);
+
+  r.addRoutine(w.id, '둘째 작업', [1, 2, 3, 4, 5], null, 100);
+  check('안 고친 항목의 시각은 그대로', r.plan.routines[0].updatedAt, before);
+
+  const id = r.plan.routines[0].id;
+  r.deleteRoutine(id);
+  ok('지우면 표시가 남는다', Boolean(r.plan.deleted[id]));
+}
+
+// --- 예전 앱 자료 이관
+{
+  const keep = new Map(store);
+  store.clear();
+  globalThis.window.HennyShell = {
+    legacyData: () => JSON.stringify({
+      'settings.json': { role: 'MANAGER', setupDone: true, backend: 'NONE' },
+      'plan.json': { schema: 1, updatedAt: 7, workers: [{ id: 'w1', name: '옛작업자' }] },
+      'progress_w1.json': { schema: 1, workerId: 'w1', updatedAt: 7, days: {}, archive: [] },
+    }),
+  };
+  const moved = importLegacy();
+  ok('예전 자료를 옮겨 온다', Array.isArray(moved) && moved.length === 3);
+  const r = new Repo();
+  check('옮겨 온 작업자가 보인다', r.plan.workers[0].name, '옛작업자');
+  check('옮겨 온 역할이 살아 있다', r.settings.role, 'MANAGER');
+
+  // 두 번째 실행에서는 다시 옮기지 않는다. 덮어쓰면 최신 기록이 되돌아간다.
+  check('한 번 옮기면 다시 옮기지 않는다', importLegacy(), null);
+
+  globalThis.window.HennyShell = null;
+  store.clear();
+  keep.forEach((v, k) => store.set(k, v));
+}
 
 // --- 결과
 if (fails.length) {
