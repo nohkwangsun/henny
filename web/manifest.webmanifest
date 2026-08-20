@@ -1,0 +1,13 @@
+{
+  "name": "헨니 체크",
+  "short_name": "헨니",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f7f3ee",
+  "theme_color": "#2e7d6f",
+  "lang": "ko",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

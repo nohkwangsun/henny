@@ -1,8 +1,6 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.plugin.compose")
-    id("org.jetbrains.kotlin.plugin.serialization")
 }
 
 /**
@@ -20,7 +18,6 @@ android {
         applicationId = "com.henny.checklist"
         minSdk = 26
         targetSdk = 36
-        // Play 에 올릴 때마다 값이 커져야 하므로 CI 실행 번호를 쓴다.
         versionCode = (System.getenv("HENNY_VERSION_CODE") ?: "1").toInt()
         versionName = System.getenv("HENNY_VERSION_NAME") ?: "1.0"
         resourceConfigurations += listOf("ko", "en")
@@ -62,42 +59,11 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
-
-    buildFeatures {
-        compose = true
-    }
-
-    packaging {
-        resources {
-            excludes += "/META-INF/{AL2.0,LGPL2.1}"
-            excludes += "DebugProbesKt.bin"
-            excludes += "kotlin-tooling-metadata.json"
-        }
-    }
-
-    // Play 는 디버그 정보를 따로 받아 크래시 로그를 읽기 좋게 만들어 준다.
-    androidResources {
-        generateLocaleConfig = false
-    }
 }
 
+// 껍데기는 WebView 를 띄우고 알림을 거는 것뿐이라 화면 라이브러리가 필요 없다.
+// 그래서 APK 가 아주 작고 빌드도 빠르다.
 dependencies {
-    val composeBom = platform("androidx.compose:compose-bom:2024.10.01")
-    implementation(composeBom)
-
     implementation("androidx.core:core-ktx:1.15.0")
-    implementation("androidx.activity:activity-compose:1.10.1")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
-
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-graphics")
-    implementation("androidx.compose.foundation:foundation")
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material-icons-core")
-
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
-
-    debugImplementation("androidx.compose.ui:ui-tooling")
-    debugImplementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.activity:activity:1.10.1")
 }

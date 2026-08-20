@@ -1,0 +1,64 @@
+name: Deploy web app
+
+# 예전에 쓰시던 흐름과 같은 자리입니다.
+#   git push -> Actions -> Pages 배포 -> 앱을 여는 순간 최신
+# webhook 도 서버 스크립트도 필요 없습니다. GitHub 이 그 역할을 합니다.
+on:
+  push:
+    branches:
+      - main
+      # main 브랜치를 만들기 전까지 쓰는 임시 항목입니다.
+      # main 이 생기면 아래 줄을 지우세요. 그래야 개발 브랜치가 배포되지 않습니다.
+      - claude/kids-daily-checklist-app-qxag7j
+    paths:
+      - 'web/**'
+      - 'docs/**'
+      - 'tools/test_core.mjs'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 배포가 겹치면 나중 것만 살린다. 연달아 푸시해도 마지막 상태로 수렴한다.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # 배포 전에 판단 규칙이 깨지지 않았는지 먼저 확인한다. 몇 초면 끝난다.
+      - name: Test core logic
+        run: node tools/test_core.mjs
+
+      - name: Assemble site
+        run: |
+          # 서비스 워커가 캐시를 갈아치우는 기준이자, 화면에 표시할 버전이다.
+          stamp="$(date -u +%Y%m%d-%H%M)-${GITHUB_SHA::7}"
+          sed -i "s/__BUILD__/${stamp}/g" web/sw.js web/index.html web/core.js
+          # Pages 소스가 하나뿐이라 개인정보처리방침도 같은 사이트에 실어야
+          # 기존 주소(.../privacy.html)가 그대로 살아 있다.
+          cp docs/privacy.html web/privacy.html
+          echo "배포 버전: ${stamp}"
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

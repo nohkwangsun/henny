@@ -1,0 +1,172 @@
+:root {
+  --teal: #2e7d6f;
+  --teal-deep: #1f5a50;
+  --amber: #e07a3e;
+  --bg: #f7f3ee;
+  --surface: #ffffff;
+  --ink: #1e2321;
+  --muted: #5a5651;
+  --line: #e6e0d9;
+  --track: #ede7e0;
+  --error: #b3261e;
+  --w0: #2e7d6f;
+  --w1: #5a67b8;
+  --w2: #c2603e;
+  --w3: #7a5aa8;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171a; --surface: #1e2226; --ink: #e8e5e1; --muted: #b3aea8;
+    --line: #2c3136; --track: #2c3136;
+    --w0: #7ed0bf; --w1: #a9b2ec; --w2: #f0a672; --w3: #c4a9e8;
+  }
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg); color: var(--ink);
+  font: 16px/1.5 -apple-system, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+  padding-bottom: env(safe-area-inset-bottom);
+  overscroll-behavior-y: contain;
+}
+#app { max-width: 720px; margin: 0 auto; padding: 12px 16px 96px; }
+
+h1 { font-size: 26px; margin: 0; font-weight: 700; }
+h2 { font-size: 20px; margin: 0 0 4px; font-weight: 600; }
+.muted { color: var(--muted); font-size: 13px; }
+.err { color: var(--error); }
+.row { display: flex; align-items: center; gap: 10px; }
+.grow { flex: 1; min-width: 0; }
+.spread { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.stack > * + * { margin-top: 10px; }
+.center { text-align: center; }
+
+.card {
+  background: var(--surface); border-radius: 20px; padding: 16px; margin: 12px 0;
+}
+.card h3 { margin: 0 0 10px; font-size: 17px; font-weight: 600; }
+
+button {
+  font: inherit; cursor: pointer; border-radius: 999px; border: 1px solid transparent;
+  padding: 10px 18px; background: var(--teal); color: #fff; font-weight: 600;
+}
+button:disabled { opacity: .5; cursor: default; }
+button.ghost { background: transparent; color: var(--teal); border-color: var(--line); }
+button.plain { background: transparent; color: var(--teal); border: none; padding: 8px 10px; }
+button.danger { background: transparent; color: var(--error); border: none; padding: 8px 10px; }
+button.icon {
+  background: transparent; color: var(--muted); border: none;
+  padding: 8px; font-size: 20px; line-height: 1; border-radius: 999px;
+}
+button.wide { width: 100%; }
+
+input, textarea, select {
+  font: inherit; width: 100%; padding: 12px 14px; border-radius: 12px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+}
+label.field { display: block; }
+label.field > span { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+
+/* 작업 한 줄 — 크게, 한 번에 눌리게 */
+.task {
+  display: flex; align-items: center; gap: 14px; width: 100%; text-align: left;
+  background: var(--surface); border: none; border-radius: 18px;
+  padding: 18px 16px; margin-bottom: 10px; color: var(--ink); font-weight: 500;
+}
+.task .box {
+  width: 34px; height: 34px; border-radius: 999px; flex: 0 0 auto;
+  background: var(--track); display: grid; place-items: center;
+  color: #fff; font-size: 19px; font-weight: 700;
+}
+.task.done { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }
+.task.done .box { background: var(--accent); }
+.task.done .title { text-decoration: line-through; color: var(--muted); font-weight: 400; }
+.task .title { font-size: 18px; }
+.task .pts { font-weight: 700; font-size: 17px; color: var(--muted); }
+.task.done .pts { color: var(--accent); }
+.badge { font-size: 12px; font-weight: 700; color: var(--amber); }
+
+/* 진행 링 */
+.ring { display: grid; place-items: center; position: relative; }
+.ring svg { transform: rotate(-90deg); }
+.ring .inner { position: absolute; text-align: center; }
+.ring .inner b { font-size: 24px; }
+
+.pills { display: flex; gap: 10px; }
+.pill {
+  flex: 1; border-radius: 16px; padding: 12px 8px; text-align: center;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.pill b { display: block; font-size: 19px; color: var(--accent); }
+.pill span { font-size: 12px; color: var(--muted); }
+
+/* 주간 막대 */
+.bars { display: flex; justify-content: space-evenly; align-items: flex-end; }
+.bars .col { text-align: center; }
+.bars .bar { width: 22px; height: 84px; border-radius: 8px; background: var(--track);
+  display: flex; align-items: flex-end; overflow: hidden; }
+.bars .fill { width: 100%; border-radius: 8px; background: var(--accent); }
+.bars small { display: block; margin-top: 6px; color: var(--muted); font-size: 12px; }
+
+/* 월간 격자 */
+.dots { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.dots div {
+  aspect-ratio: 1; border-radius: 8px; background: var(--track);
+  display: grid; place-items: center; font-size: 12px; color: var(--muted);
+}
+.dots div.full { background: var(--accent); color: #fff; }
+
+/* 아래 탭 */
+nav.tabs {
+  position: fixed; left: 0; right: 0; bottom: 0; display: flex;
+  background: var(--surface); border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+nav.tabs button {
+  flex: 1; background: transparent; color: var(--muted); border: none;
+  border-radius: 0; padding: 10px 4px 12px; font-size: 12px; font-weight: 600;
+}
+nav.tabs button.on { color: var(--teal); }
+nav.tabs .ico { display: block; font-size: 19px; margin-bottom: 2px; }
+
+/* 칩 */
+.chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip {
+  border-radius: 14px; padding: 10px 16px; background: var(--track);
+  color: var(--muted); border: none; font-weight: 600; font-size: 14px;
+}
+.chip.on { background: var(--accent); color: #fff; }
+
+.days { display: flex; gap: 6px; }
+.days button {
+  width: 38px; height: 38px; padding: 0; border-radius: 999px;
+  background: var(--track); color: var(--muted); font-size: 14px;
+}
+.days button.on { background: var(--teal); color: #fff; }
+
+.list-row { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-top: 1px solid var(--line); }
+.list-row:first-of-type { border-top: none; }
+
+/* 모달 */
+.backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,.45); display: grid;
+  place-items: center; padding: 16px; z-index: 50;
+}
+.modal {
+  background: var(--surface); border-radius: 22px; padding: 20px;
+  width: 100%; max-width: 420px; max-height: 88vh; overflow: auto;
+}
+.modal h3 { margin: 0 0 14px; font-size: 19px; }
+.modal .actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 18px; }
+.code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+  word-break: break-all; background: var(--track); padding: 10px; border-radius: 10px;
+  color: var(--muted);
+}
+
+.toast {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 84px;
+  background: var(--ink); color: var(--bg); padding: 12px 18px; border-radius: 999px;
+  font-size: 14px; z-index: 60; max-width: 90%; text-align: center;
+}

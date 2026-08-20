@@ -1,15 +1,8 @@
-# kotlinx.serialization ships its own consumer rules, these are belt-and-braces
-# for the @Serializable models this app persists and syncs.
--keepattributes *Annotation*, InnerClasses
--dontnote kotlinx.serialization.**
-
--keep,includedescriptorclasses class com.henny.checklist.data.**$$serializer { *; }
--keepclassmembers class com.henny.checklist.data.** {
-    *** Companion;
+# WebView 가 자바스크립트에서 부르는 다리. 이름이 바뀌면 웹에서 못 찾는다.
+-keepclassmembers class com.henny.checklist.MainActivity$Bridge {
+    public *;
 }
--keepclasseswithmembers class com.henny.checklist.data.** {
-    kotlinx.serialization.KSerializer serializer(...);
-}
+-keepattributes JavascriptInterface
 
-# Broadcast receivers referenced only from the manifest
+# 매니페스트에서만 참조되는 리시버
 -keep class com.henny.checklist.notify.** { *; }
