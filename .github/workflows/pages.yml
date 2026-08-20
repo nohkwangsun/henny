@@ -55,6 +55,10 @@ jobs:
           echo "배포 버전: ${stamp}"
 
       - uses: actions/configure-pages@v5
+        with:
+          # 저장소에 Pages 가 아직 안 켜져 있으면 이 액션이 직접 켠다.
+          # 설정 화면을 손댈 필요가 없다.
+          enablement: true
 
       - uses: actions/upload-pages-artifact@v3
         with:
