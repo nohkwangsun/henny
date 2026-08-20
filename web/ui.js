@@ -13,6 +13,7 @@ const restored = importLegacy();
 
 const repo = new Repo();
 const app = document.getElementById('app');
+const modalRoot = document.getElementById('modal-root');
 const ACCENTS = ['--w0', '--w1', '--w2', '--w3'];
 
 let tab = 'TODAY';
@@ -99,8 +100,18 @@ function syncLine() {
 
 // ------------------------------------------------------------------ 모달
 
-function openModal(render) { modal = render; draw(); }
-function closeModal() { modal = null; draw(); }
+function openModal(render) { modal = render; modalDirty = true; draw(); }
+
+function closeModal() {
+  modal = null;
+  modalDirty = true;
+  // 모달마다 이 세 개를 새로 걸어 준다. 닫을 때 지우지 않으면 다음 모달에서
+  // 이전 모달의 저장 동작이 남아 엉뚱한 것이 저장된다.
+  pendingConfirm = null;
+  dayToggle = null;
+  deleteRoutineNow = null;
+  draw();
+}
 
 function modalShell(title, body, actions) {
   return `<div class="backdrop" data-close="1"><div class="modal">
@@ -113,8 +124,8 @@ function promptModal({ title, label, value = '', placeholder = '', confirm = '�
   openModal(() => modalShell(title,
     `<label class="field"><span>${esc(label)}</span>
       <input id="m-input" value="${esc(value)}" placeholder="${esc(placeholder)}" autocomplete="off"></label>`,
-    `<button class="plain" data-act="close">취소</button>
-     <button class="plain" data-act="confirm">${esc(confirm)}</button>`));
+    `<button class="ghost" data-act="close">취소</button>
+     <button data-act="confirm">${esc(confirm)}</button>`));
   pendingConfirm = () => {
     const v = document.getElementById('m-input').value.trim();
     if (v) { closeModal(); onConfirm(v); }
@@ -213,7 +224,7 @@ function viewSetup() {
     <p class="muted">오늘 할 작업을 한눈에.</p>
     <div style="height:16px"></div>
     ${body}
-    ${setupStep !== 'ROLE' ? '<button class="plain" data-act="setup-back">← 처음으로</button>' : ''}
+    ${setupStep !== 'ROLE' ? '<button class="plain" data-act="setup-back">← 뒤로</button>' : ''}
   </div>`;
 }
 
@@ -307,6 +318,7 @@ function viewManagerToday() {
           <span class="muted" style="font-size:12px">${t.doneAt ? doneAtText(t.doneAt) + ' 완료'
             : t.dueMinute != null ? minuteToText(t.dueMinute) + '까지' : ''}</span>
           <b style="font-size:13px;color:${t.doneAt ? accent : 'var(--muted)'}">${t.points}P</b>
+          ${t.isAssignment ? `<button class="icon" data-act="del-assignment" data-id="${t.id}" title="배정 취소">✕</button>` : ''}
         </div>`).join('')}
         <div style="height:8px"></div>
         <button class="ghost" data-act="assign" data-id="${w.id}">＋ 임시 작업 배정</button>
@@ -365,8 +377,9 @@ function viewManagerTasks() {
     <div class="card"><h3>점검 알림</h3>
       <p class="muted">정해둔 시각에 작업자 기기가 알립니다.</p>
       ${reminders.map((r) => `<div class="list-row">
-        <div class="grow" data-act="edit-reminder" data-id="${r.id}"><b>${minuteToText(r.minute)}</b>
-          <div class="muted">${esc(r.text)}${r.onlyIfIncomplete ? ' · 남았을 때만' : ''}</div></div>
+        <div class="grow tappable" data-act="edit-reminder" data-id="${r.id}">
+          <div class="grow"><b>${minuteToText(r.minute)}</b>
+            <div class="muted">${esc(r.text)}${r.onlyIfIncomplete ? ' · 남았을 때만' : ''}</div></div></div>
         <button class="plain" data-act="toggle-reminder" data-id="${r.id}">${r.enabled === false ? '켜기' : '끄기'}</button>
         <button class="danger" data-act="del-reminder" data-id="${r.id}">삭제</button>
       </div>`).join('')}
@@ -394,8 +407,9 @@ function viewSettings(isManager) {
 
     ${isManager ? `<div class="card"><h3>작업자</h3>
       ${repo.plan.workers.map((w) => `<div class="list-row">
-        <div class="grow" data-act="rename-worker" data-id="${w.id}"><b>${esc(w.name)}</b>
-          <div class="muted">${s.progressBins[w.id] ? '연결됨' : '저장 공간 없음'} · 눌러서 이름 수정</div></div>
+        <div class="grow tappable" data-act="rename-worker" data-id="${w.id}">
+          <div class="grow"><b>${esc(w.name)}</b>
+            <div class="muted">${s.progressBins[w.id] ? '연결됨' : '저장 공간 없음'}</div></div></div>
         <button class="plain" data-act="show-code" data-id="${w.id}">연결 코드</button>
         <button class="danger" data-act="del-worker" data-id="${w.id}">삭제</button>
       </div>`).join('')}
@@ -463,15 +477,86 @@ function viewManager() {
 // ------------------------------------------------------------------ 그리기
 
 let workerSettingsOpen = false;
+let modalDirty = false;
+let bodyDirty = false;
 
-function draw() {
+function bodyHtml() {
   const s = repo.settings;
-  let html;
-  if (!s.setupDone) html = viewSetup();
-  else if (s.role === 'MANAGER') html = viewManager();
-  else if (workerSettingsOpen) html = viewSettings(false) + '<button class="plain" data-act="close-settings">← 돌아가기</button>';
-  else html = viewWorker();
-  app.innerHTML = html + (modal ? modal() : '');
+  if (!s.setupDone) return viewSetup();
+  if (s.role === 'MANAGER') return viewManager();
+  if (workerSettingsOpen) return viewSettings(false) + '<button class="plain" data-act="close-settings">← 돌아가기</button>';
+  return viewWorker();
+}
+
+/** 입력 중인가. 다시 그리면 글자와 커서가 함께 날아가는 상태다. */
+function isTyping() {
+  const el = document.activeElement;
+  return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
+}
+
+/**
+ * 본문과 모달을 따로 그린다.
+ *
+ * 예전에는 innerHTML 한 번에 둘 다 그렸다. 그런데 15초마다 도는 동기화가
+ * 끝날 때마다 이 함수가 불리므로, 작업 이름을 타이핑하는 도중에 동기화가
+ * 한 번 끝나면 입력칸이 통째로 새로 만들어져 글자도 커서도 키보드도
+ * 사라졌다. 팀 저장소를 붙인 뒤부터 앱을 못 쓸 만큼 불편했던 원인이다.
+ *
+ * 그래서 지금은 입력에 손이 가 있는 동안에는 본문을 건드리지 않고 미뤄
+ * 두었다가, 입력이 끝나면 그때 반영한다. 모달은 열고 닫을 때만 그린다.
+ */
+function draw() {
+  if (modal || isTyping()) {
+    bodyDirty = true;
+  } else {
+    // 탭바는 관리자 화면에만 있다. 작업자 화면에서도 탭바 높이만큼 비워
+    // 두어서 아래에 쓸데없는 빈 자리가 남아 있었다.
+    document.body.classList.toggle('has-tabs', repo.settings.setupDone && repo.settings.role === 'MANAGER');
+    app.innerHTML = bodyHtml();
+    bodyDirty = false;
+  }
+
+  if (modalDirty) {
+    modalRoot.innerHTML = modal ? modal() : '';
+    modalDirty = false;
+    if (modal) focusFirstField();
+  }
+}
+
+/** 모달을 열면 바로 칠 수 있게 한다. 안 그러면 매번 한 번 더 눌러야 한다. */
+function focusFirstField() {
+  const el = modalRoot.querySelector('input:not([type=checkbox]):not([type=time]), textarea');
+  if (!el) return;
+  el.focus();
+  // 커서를 글자 끝에 둔다. 전체 선택된 채로 두면 고치려다 지우기 쉽다.
+  const v = el.value;
+  el.value = '';
+  el.value = v;
+}
+
+// 입력이 끝나면 미뤄 둔 갱신을 반영한다. 다른 입력칸으로 옮겨 가는 중일
+// 수도 있어서 한 박자 뒤에 확인한다.
+document.addEventListener('focusout', () => {
+  setTimeout(() => { if (bodyDirty && !modal && !isTyping()) draw(); }, 0);
+});
+
+/**
+ * 키보드가 올라온 뒤 실제로 남는 화면을 잰다.
+ *
+ * 안드로이드는 키보드가 떠도 레이아웃 뷰포트(100vh)가 그대로라, 모달을
+ * 화면 한가운데 두면 키보드 뒤에 가려진다. visualViewport 는 키보드를
+ * 뺀 크기를 알려주므로 그 값을 CSS 로 넘긴다.
+ */
+const viewport = window.visualViewport;
+function trackViewport() {
+  const root = document.documentElement.style;
+  root.setProperty('--vvh', viewport.height + 'px');
+  root.setProperty('--vvtop', viewport.offsetTop + 'px');
+}
+if (viewport) {
+  viewport.addEventListener('resize', trackViewport);
+  viewport.addEventListener('scroll', trackViewport);
+  trackViewport();
 }
 
 // ------------------------------------------------------------------ 동작
@@ -480,7 +565,11 @@ const ACTIONS = {
   'role-manager': () => { repo.updateSettings({ role: 'MANAGER' }); setupStep = 'WORKERS'; },
   'role-worker': () => { repo.updateSettings({ role: 'WORKER' }); setupStep = 'CODE'; },
   'go-code': () => { setupStep = 'CODE'; },
-  'setup-back': () => { setupStep = 'ROLE'; },
+  // 한 단계씩 되돌아간다. 예전에는 어디서 누르든 맨 처음으로 돌아가서,
+  // 주소를 잘못 넣어 고치려던 사람이 역할 고르기부터 다시 해야 했다.
+  'setup-back': () => {
+    setupStep = { WORKERS: 'ROLE', STORAGE: 'WORKERS', CODE: 'ROLE', SOLO: 'CODE' }[setupStep] || 'ROLE';
+  },
   'setup-next': () => { setupStep = 'STORAGE'; },
   'solo': () => { setupStep = 'SOLO'; },
 
@@ -538,6 +627,14 @@ const ACTIONS = {
   'close-settings': () => { workerSettingsOpen = false; },
 
   'assign': (id) => openAssignmentModal(id),
+  'del-assignment': (id) => {
+    const a = repo.plan.assignments.find((x) => x.id === id);
+    openModal(() => modalShell('배정 취소',
+      `<p>${esc(a?.title || '이 임시 작업')}을 배정 목록에서 뺍니다.</p>`,
+      `<button class="ghost" data-act="close">그대로 두기</button>
+       <button class="danger solid" data-act="confirm">배정 취소</button>`));
+    pendingConfirm = () => { closeModal(); repo.deleteAssignment(id); };
+  },
   'add-routine': () => openRoutineModal(null),
   'edit-routine': (id) => openRoutineModal(repo.plan.routines.find((r) => r.id === id)),
   'add-reminder': () => openReminderModal({
@@ -558,7 +655,7 @@ const ACTIONS = {
   'del-worker': (id) => {
     openModal(() => modalShell(`${repo.workerName(id)} 삭제`,
       `<p>${esc(repo.workerName(id))}의 정기 작업, 임시 작업, 알림이 함께 지워집니다. 지금까지의 기록은 남습니다.</p>`,
-      `<button class="plain" data-act="close">취소</button><button class="danger" data-act="confirm">삭제</button>`));
+      `<button class="ghost" data-act="close">취소</button><button class="danger solid" data-act="confirm">삭제</button>`));
     pendingConfirm = () => { closeModal(); repo.deleteWorker(id); };
   },
 
@@ -584,14 +681,14 @@ const ACTIONS = {
   'reset': () => {
     openModal(() => modalShell('이 기기 설정 초기화',
       '<p>이 기기의 연결 설정을 지우고 처음부터 다시 설정합니다. 팀 저장소의 자료는 그대로입니다.</p>',
-      `<button class="plain" data-act="close">취소</button><button class="danger" data-act="confirm">초기화</button>`));
+      `<button class="ghost" data-act="close">취소</button><button class="danger solid" data-act="confirm">초기화</button>`));
     pendingConfirm = () => { localStorage.clear(); location.reload(); };
   },
 
   'wipe': () => {
     openModal(() => modalShell('모든 데이터 지우기',
       '<p>작업자 정보, 정기 작업, 임시 작업, 알림, 지금까지의 체크 기록을 이 기기와 팀 저장소에서 모두 지웁니다. 되돌릴 수 없습니다.</p>',
-      `<button class="plain" data-act="close">취소</button><button class="danger" data-act="confirm">지우기</button>`));
+      `<button class="ghost" data-act="close">취소</button><button class="danger solid" data-act="confirm">지우기</button>`));
     pendingConfirm = async () => {
       closeModal();
       try { await repo.wipeAll(); toast('모두 지웠습니다.'); }
@@ -603,19 +700,35 @@ const ACTIONS = {
 function showCode(title, code, note) {
   openModal(() => modalShell(title,
     `<p class="muted">${esc(note)}</p><div class="code">${esc(code)}</div>`,
-    `<button class="plain" data-act="copy" data-id="${esc(code)}">복사</button>
-     <button class="plain" data-act="close">닫기</button>`));
+    `<button class="ghost" data-act="close">닫기</button>
+     <button data-act="copy" data-id="${esc(code)}">복사하기</button>`));
+}
+
+/** 배점은 매번 손으로 치기 번거롭다. 자주 쓰는 값을 눌러 넣게 한다. */
+const POINT_CHOICES = [50, 100, 200, 500];
+
+function pointsField(value) {
+  return `<div><span class="muted">마일리지</span>
+    <div class="chips" style="margin:6px 0 8px">${POINT_CHOICES.map((p) =>
+      `<button class="chip ${p === value ? 'on' : ''}" style="--accent:var(--teal)"
+        data-act="points" data-id="${p}">${p}P</button>`).join('')}</div>
+    <input id="m-points" type="number" inputmode="numeric" min="0" value="${value}"></div>`;
+}
+
+function dayButtons(days) {
+  return [1, 2, 3, 4, 5, 6, 7].map((d) =>
+    `<button class="${days.includes(d) ? 'on' : ''}" data-act="day" data-id="${d}">${'월화수목금토일'[d - 1]}</button>`).join('');
 }
 
 function openAssignmentModal(workerId) {
-  let points = DEFAULT_POINTS;
   openModal(() => modalShell(`${repo.workerName(workerId)}에게 임시 작업`,
     `<div class="stack">
       <label class="field"><span>작업 내용</span><input id="m-title" placeholder="예: 창고 재고 확인"></label>
-      <label class="field"><span>마일리지</span><input id="m-points" type="number" inputmode="numeric" value="${points}"></label>
+      ${pointsField(DEFAULT_POINTS)}
       <label class="field"><span>마감 시각 (비워도 됨)</span><input id="m-due" type="time"></label>
     </div>`,
-    `<button class="plain" data-act="close">취소</button><button class="plain" data-act="confirm">배정</button>`));
+    `<button class="ghost" data-act="close">취소</button><button data-act="confirm">배정</button>`));
+  pointsPick = makePointsPick();
   pendingConfirm = () => {
     const title = document.getElementById('m-title').value.trim();
     if (!title) return;
@@ -628,37 +741,27 @@ function openAssignmentModal(workerId) {
 }
 
 function openRoutineModal(routine) {
-  let days = routine ? [...(routine.days || [])] : [1, 2, 3, 4, 5];
+  const days = routine ? [...(routine.days || [])] : [1, 2, 3, 4, 5];
   const timeValue = routine?.dueMinute != null
     ? `${String(Math.floor(routine.dueMinute / 60)).padStart(2, '0')}:${String(routine.dueMinute % 60).padStart(2, '0')}` : '';
+  const points = routine?.points ?? DEFAULT_POINTS;
 
   const render = () => modalShell(routine ? '작업 수정' : '작업 추가',
     `<div class="stack">
       <label class="field"><span>어떤 작업인가요?</span>
         <input id="m-title" value="${esc(routine?.title || '')}" placeholder="예: 일일 점검표 작성"></label>
-      <label class="field"><span>마일리지</span>
-        <input id="m-points" type="number" inputmode="numeric" value="${routine?.points ?? DEFAULT_POINTS}"></label>
+      ${pointsField(points)}
       <div><span class="muted">하는 요일</span>
-        <div class="days" style="margin-top:6px">${[1, 2, 3, 4, 5, 6, 7].map((d) =>
-          `<button class="${days.includes(d) ? 'on' : ''}" data-act="day" data-id="${d}">${'월화수목금토일'[d - 1]}</button>`).join('')}</div></div>
+        <div class="days" style="margin-top:6px">${dayButtons(days)}</div></div>
       <label class="field"><span>마감 시각 (비워도 됨)</span><input id="m-due" type="time" value="${timeValue}"></label>
       ${routine ? `<label class="row"><input type="checkbox" id="m-active" style="width:auto" ${routine.active === false ? '' : 'checked'}> <span>사용 중</span></label>` : ''}
     </div>`,
     `${routine ? '<button class="danger" data-act="del-routine-now">삭제</button>' : ''}
-     <button class="plain" data-act="close">취소</button><button class="plain" data-act="confirm">저장</button>`);
+     <button class="ghost" data-act="close">취소</button><button data-act="confirm">저장</button>`);
 
   openModal(render);
-  dayToggle = (d) => {
-    const n = Number(d);
-    days = days.includes(n) ? days.filter((x) => x !== n) : [...days, n].sort();
-    const title = document.getElementById('m-title')?.value;
-    const pts = document.getElementById('m-points')?.value;
-    const due = document.getElementById('m-due')?.value;
-    draw();
-    if (title != null) document.getElementById('m-title').value = title;
-    if (pts != null) document.getElementById('m-points').value = pts;
-    if (due != null) document.getElementById('m-due').value = due;
-  };
+  dayToggle = makeDayToggle(days);
+  pointsPick = makePointsPick();
   deleteRoutineNow = () => { closeModal(); repo.deleteRoutine(routine.id); };
   pendingConfirm = () => {
     const title = document.getElementById('m-title').value.trim();
@@ -674,28 +777,19 @@ function openRoutineModal(routine) {
 }
 
 function openReminderModal(reminder) {
-  let days = [...(reminder.days || [])];
+  const days = [...(reminder.days || [])];
   const timeValue = `${String(Math.floor(reminder.minute / 60)).padStart(2, '0')}:${String(reminder.minute % 60).padStart(2, '0')}`;
   const render = () => modalShell('점검 알림',
     `<div class="stack">
       <label class="field"><span>알릴 시각</span><input id="m-time" type="time" value="${timeValue}"></label>
       <label class="field"><span>알림 문구</span><input id="m-text" value="${esc(reminder.text)}"></label>
       <div><span class="muted">울리는 요일</span>
-        <div class="days" style="margin-top:6px">${[1, 2, 3, 4, 5, 6, 7].map((d) =>
-          `<button class="${days.includes(d) ? 'on' : ''}" data-act="day" data-id="${d}">${'월화수목금토일'[d - 1]}</button>`).join('')}</div></div>
+        <div class="days" style="margin-top:6px">${dayButtons(days)}</div></div>
       <label class="row"><input type="checkbox" id="m-only" style="width:auto" ${reminder.onlyIfIncomplete ? 'checked' : ''}> <span>남은 작업이 있을 때만</span></label>
     </div>`,
-    `<button class="plain" data-act="close">취소</button><button class="plain" data-act="confirm">저장</button>`);
+    `<button class="ghost" data-act="close">취소</button><button data-act="confirm">저장</button>`);
   openModal(render);
-  dayToggle = (d) => {
-    const n = Number(d);
-    days = days.includes(n) ? days.filter((x) => x !== n) : [...days, n].sort();
-    const t = document.getElementById('m-time')?.value;
-    const x = document.getElementById('m-text')?.value;
-    draw();
-    if (t) document.getElementById('m-time').value = t;
-    if (x != null) document.getElementById('m-text').value = x;
-  };
+  dayToggle = makeDayToggle(days);
   pendingConfirm = () => {
     const t = document.getElementById('m-time').value;
     const text = document.getElementById('m-text').value.trim();
@@ -709,10 +803,43 @@ function openReminderModal(reminder) {
 
 let dayToggle = null;
 let deleteRoutineNow = null;
+let pointsPick = null;
+
+/**
+ * 요일 버튼은 다시 그리지 않고 눌린 표시만 바꾼다.
+ *
+ * 예전에는 요일을 누를 때마다 화면을 통째로 다시 그리고 제목·배점·마감만
+ * 손으로 되돌려 놓았다. 그래서 "사용 중"과 "남은 작업이 있을 때만"
+ * 체크박스는 되돌려지지 않아, 그걸 바꾼 뒤 요일을 건드리면 아무 말 없이
+ * 원래대로 돌아가 있었다.
+ */
+function makeDayToggle(days) {
+  return (d) => {
+    const n = Number(d);
+    const at = days.indexOf(n);
+    if (at >= 0) days.splice(at, 1);
+    else { days.push(n); days.sort((a, b) => a - b); }
+    modalRoot.querySelectorAll('.days button').forEach((b) => {
+      b.classList.toggle('on', days.includes(Number(b.dataset.id)));
+    });
+  };
+}
+
+/** 배점 칩. 같은 이유로 다시 그리지 않고 입력칸 값만 바꾼다. */
+function makePointsPick() {
+  return (v) => {
+    const input = document.getElementById('m-points');
+    if (!input) return;
+    input.value = v;
+    modalRoot.querySelectorAll('[data-act="points"]').forEach((b) => {
+      b.classList.toggle('on', b.dataset.id === String(v));
+    });
+  };
+}
 
 // ------------------------------------------------------------------ 이벤트
 
-app.addEventListener('click', (ev) => {
+function onClick(ev) {
   const target = ev.target.closest('[data-act]');
   if (!target) {
     if (ev.target.dataset.close) closeModal();
@@ -725,12 +852,26 @@ app.addEventListener('click', (ev) => {
   if (act === 'confirm') return pendingConfirm?.();
   if (act === 'day') return dayToggle?.(id);
   if (act === 'del-routine-now') return deleteRoutineNow?.();
+  if (act === 'points') return pointsPick?.(id);
   if (act === 'copy') {
     navigator.clipboard?.writeText(id).then(() => toast('복사했습니다')).catch(() => toast('복사하지 못했습니다'));
     return;
   }
   const fn = ACTIONS[act];
   if (fn) { fn(id); draw(); }
+}
+
+app.addEventListener('click', onClick);
+modalRoot.addEventListener('click', onClick);
+
+// 키보드의 완료로 저장되게 한다. 한 줄 입력하고 저장 버튼을 따로 찾아
+// 누르는 것은 손이 많이 간다.
+modalRoot.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape') { ev.preventDefault(); closeModal(); return; }
+  if (ev.key !== 'Enter') return;
+  if (ev.target.tagName !== 'INPUT' || ev.target.type === 'checkbox') return;
+  ev.preventDefault();
+  pendingConfirm?.();
 });
 
 repo.subscribe(() => draw());

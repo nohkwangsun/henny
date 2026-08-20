@@ -215,6 +215,132 @@ await check('한쪽에서 지우면 다른 쪽에서도 지워진다', async () 
   if (rows.length !== 1) throw new Error(`지운 뒤 남은 작업이 ${rows.length}개다 (1개여야 함)`);
 });
 
+console.log('입력 다루기');
+
+await check('동기화가 돌아도 입력하던 값이 지워지지 않는다', async () => {
+  // 예전에는 화면을 통째로 다시 그려서, 15초마다 도는 동기화가 한 번 끝나면
+  // 타이핑하던 글자가 사라졌다. 팀 저장소를 붙인 뒤 앱이 못 쓸 만큼
+  // 불편했던 원인이라 실제로 동기화를 돌려 놓고 확인한다.
+  await manager.click('[data-act="tab"][data-id="TASKS"]');
+  await manager.click('[data-act="add-routine"]');
+  await manager.fill('#m-title', '아직 입력 중인 제목');
+
+  // 화면을 다시 그리게 하는 실제 경로를 그대로 탄다. 앱으로 돌아오거나
+  // 동기화가 끝나면 둘 다 여기로 와서 draw() 를 부른다.
+  await manager.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await manager.waitForTimeout(600);
+
+  const left = await manager.inputValue('#m-title');
+  if (left !== '아직 입력 중인 제목') throw new Error(`입력이 "${left}" 로 바뀌었다`);
+});
+
+await check('요일을 눌러도 입력한 값이 남아 있다', async () => {
+  await manager.fill('#m-title', '요일 검사');
+  await manager.fill('#m-points', '70');
+  const days = await manager.$$('.days button');
+  await days[5].click();          // 토요일 켜기
+  await manager.waitForTimeout(200);
+
+  if (await manager.inputValue('#m-title') !== '요일 검사') throw new Error('제목이 날아갔다');
+  if (await manager.inputValue('#m-points') !== '70') throw new Error('배점이 날아갔다');
+  if (!(await days[5].getAttribute('class') || '').includes('on')) throw new Error('요일이 안 켜졌다');
+
+  await manager.click('[data-act="confirm"]');
+  await manager.waitForTimeout(300);
+  if (!(await html(manager)).includes('요일 검사')) throw new Error('저장이 안 됐다');
+});
+
+await check('요일을 눌러도 꺼 둔 체크박스가 다시 켜지지 않는다', async () => {
+  // 요일 버튼이 화면을 다시 그리면서 제목·배점·마감만 되돌려 놓았다.
+  // 체크박스는 그 목록에 없어서, 꺼 둔 것이 말없이 다시 켜졌다.
+  // "사용 중" 체크박스는 이미 있는 작업을 고칠 때만 나온다.
+  // 모달을 닫으면 본문을 다시 그리므로 잡아 둔 참조가 끊긴다. 매번 새로 찾는다.
+  const count = (await manager.$$('[data-act="edit-routine"]')).length;
+  let opened = false;
+  for (let i = 0; i < count; i++) {
+    const rows = await manager.$$('[data-act="edit-routine"]');
+    await rows[i].click();
+    await manager.waitForTimeout(250);
+    if (await manager.inputValue('#m-title') === '요일 검사') { opened = true; break; }
+    await manager.click('[data-act="close"]');
+    await manager.waitForTimeout(250);
+  }
+  if (!opened) throw new Error('방금 만든 작업을 열지 못했다');
+
+  const active = await manager.$('#m-active');
+  if (!active) throw new Error('"사용 중" 체크박스가 없다');
+  await active.uncheck();
+
+  const days = await manager.$$('.days button');
+  await days[6].click();          // 일요일도 켜기
+  await manager.waitForTimeout(250);
+
+  if (await active.isChecked()) throw new Error('꺼 둔 체크박스가 다시 켜졌다');
+  await manager.click('[data-act="close"]');
+  await manager.waitForTimeout(200);
+});
+
+await check('배점 칩을 누르면 배점이 채워진다', async () => {
+  await manager.click('[data-act="add-routine"]');
+  await manager.click('[data-act="points"][data-id="500"]');
+  await manager.waitForTimeout(150);
+  if (await manager.inputValue('#m-points') !== '500') throw new Error('배점이 안 들어갔다');
+  await manager.click('[data-act="close"]');
+  await manager.waitForTimeout(200);
+});
+
+await check('임시 작업을 배정하고 다시 뺄 수 있다', async () => {
+  await manager.click('[data-act="tab"][data-id="TODAY"]');
+  await manager.click('[data-act="assign"]');
+  await manager.fill('#m-title', '잘못 배정한 일');
+  await manager.click('[data-act="confirm"]');
+  await manager.waitForTimeout(400);
+  if (!(await html(manager)).includes('잘못 배정한 일')) throw new Error('배정이 안 됐다');
+
+  await manager.click('[data-act="del-assignment"]');
+  await manager.waitForTimeout(200);
+  await manager.click('[data-act="confirm"]');
+  await manager.waitForTimeout(400);
+  if ((await html(manager)).includes('잘못 배정한 일')) throw new Error('배정이 그대로 남았다');
+});
+
+await check('키보드가 올라와도 저장 버튼에 닿는다', async () => {
+  // 안드로이드는 키보드가 떠도 100vh 가 그대로다. 그래서 모달을 화면
+  // 한가운데 두면 키보드 뒤에 가려 저장 버튼을 누를 수 없었다.
+  // 키보드가 차지한 만큼 보이는 높이가 줄어든 상황을 만들어 확인한다.
+  await manager.setViewportSize({ width: 390, height: 844 });
+  await manager.click('[data-act="tab"][data-id="TASKS"]');
+  await manager.waitForTimeout(200);
+  await manager.click('[data-act="add-routine"]');
+  await manager.waitForTimeout(300);
+
+  const KEYBOARD = 420;
+  await manager.evaluate((h) => {
+    document.documentElement.style.setProperty('--vvh', h + 'px');
+  }, 844 - KEYBOARD);
+  await manager.waitForTimeout(200);
+
+  // 키보드 윗선(=화면 위에서 424px) 아래는 손이 닿지 않는 자리다. 내용이
+  // 길면 스크롤해서 올려도 되지만, 끝까지 내렸을 때 저장 버튼이 이 선
+  // 위로 올라와야 한다. 예전에는 화면 한가운데 고정이라 스크롤조차 되지
+  // 않아 저장 버튼에 영영 닿을 수 없었다.
+  const bottom = await manager.evaluate(() => {
+    document.querySelectorAll('.backdrop, .modal').forEach((el) => { el.scrollTop = el.scrollHeight; });
+    return Math.round(document.querySelector('[data-act="confirm"]').getBoundingClientRect().bottom);
+  });
+  if (bottom > 844 - KEYBOARD) {
+    throw new Error(`끝까지 내려도 저장 버튼이 키보드에 가린다 (${bottom} > ${844 - KEYBOARD})`);
+  }
+  // 실제로 눌리는지까지 본다
+  await manager.fill('#m-title', '키보드 검사');
+  await manager.click('[data-act="confirm"]');
+  await manager.waitForTimeout(300);
+  if (!(await html(manager)).includes('키보드 검사')) throw new Error('저장 버튼이 눌리지 않았다');
+
+  await manager.evaluate(() => document.documentElement.style.removeProperty('--vvh'));
+  await manager.waitForTimeout(200);
+});
+
 await check('앱에 넘길 알람 일정이 만들어진다', async () => {
   const count = await worker.evaluate(async () => {
     const m = await import('./core.js');
