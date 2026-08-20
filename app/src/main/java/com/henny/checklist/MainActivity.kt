@@ -16,14 +16,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
-import androidx.lifecycle.lifecycleScope
 import com.henny.checklist.data.Repository
 import com.henny.checklist.notify.AlarmScheduler
 import com.henny.checklist.notify.Notifications
 import com.henny.checklist.ui.AppRoot
 import com.henny.checklist.ui.HennyTheme
 import com.henny.checklist.ui.LocalNotificationRequester
-import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -60,15 +58,15 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        // 앱을 열 때마다 최신 계획을 받아오고 다음 알람을 다시 건다.
-        lifecycleScope.launch { repo.sync() }
+        // 화면에 보이는 동안은 계속 맞춰 둔다. 들어오자마자 한 번, 그 뒤로는 주기 확인.
+        repo.startLiveSync()
         AlarmScheduler.reschedule(this)
     }
 
     override fun onStop() {
         super.onStop()
-        // 체크해 둔 걸 미뤄둔 채로 앱을 벗어나지 않게 한다.
-        repo.flushPush()
+        // 확인 루프를 멈추고, 미뤄둔 업로드는 마저 끝낸다.
+        repo.stopLiveSync()
     }
 
     private fun askForNotifications() {

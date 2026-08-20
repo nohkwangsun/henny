@@ -19,6 +19,19 @@ class RemoteStore(private val backend: Backend, private val apiKey: String) {
 
     val configured: Boolean get() = backend != Backend.NONE
 
+    /**
+     * 문서 전체를 받지 않고 필드 하나만 읽을 수 있는가.
+     * Realtime Database 는 경로 단위로 읽히므로 변경 감지가 수십 바이트로 끝난다.
+     */
+    val supportsFieldFetch: Boolean get() = backend == Backend.FIREBASE
+
+    /** 변경 여부만 싸게 확인한다. 지원하지 않는 백엔드면 null. */
+    suspend fun getUpdatedAt(handle: String): Long? {
+        if (!supportsFieldFetch) return null
+        val field = handle.removeSuffix(".json") + "/updatedAt.json"
+        return get(field)?.trim()?.trim('"')?.toLongOrNull()
+    }
+
     suspend fun get(handle: String): String? = withContext(Dispatchers.IO) {
         when (backend) {
             Backend.NONE -> null

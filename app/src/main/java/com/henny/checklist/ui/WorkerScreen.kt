@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -59,12 +60,18 @@ fun WorkerScreen(
     tasks: List<TodayTask>,
     week: RangeStat,
     streak: Int,
+    lifetimePoints: Int,
+    syncing: Boolean,
+    syncLabel: String,
+    onSync: () -> Unit,
     onToggle: (String) -> Unit,
     onOpenSettings: () -> Unit
 ) {
     val done = tasks.count { it.done }
     val total = tasks.size
     val allDone = total > 0 && done == total
+    val earned = tasks.filter { it.done }.sumOf { it.points }
+    val offered = tasks.sumOf { it.points }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -91,9 +98,16 @@ fun WorkerScreen(
                             color = MaterialTheme.colorScheme.onBackground
                         )
                         Text(
-                            text = dateHeadline(today),
+                            text = if (syncing) "맞추는 중…" else syncLabel,
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    IconButton(onClick = onSync, enabled = !syncing) {
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = "지금 맞추기",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     IconButton(onClick = onOpenSettings) {
@@ -125,7 +139,15 @@ fun WorkerScreen(
                     color = if (allDone) accent else MaterialTheme.colorScheme.onBackground,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    StatPill("오늘 모은 마일리지", "${earned}P", accent, Modifier.weight(1f))
+                    StatPill("오늘 걸린 마일리지", "${offered}P", accent, Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(10.dp))
             }
 
             items(tasks, key = { it.id }) { task ->
@@ -139,8 +161,26 @@ fun WorkerScreen(
                     Spacer(Modifier.height(14.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         StatPill("달성률", "${week.rate}%", accent, Modifier.weight(1f))
-                        StatPill("해낸 일", "${week.done}개", accent, Modifier.weight(1f))
+                        StatPill("이번 주", "${week.points}P", accent, Modifier.weight(1f))
                         StatPill("연속", "${streak}일", accent, Modifier.weight(1f))
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "지금까지 모은 마일리지",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            "${lifetimePoints}P",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = accent
+                        )
                     }
                 }
             }
@@ -221,11 +261,15 @@ private fun TaskRow(task: TodayTask, accent: Color, onToggle: () -> Unit) {
                     )
                 }
             }
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text = "${task.points}P",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = if (task.done) accent else MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
-
-private fun dateHeadline(date: LocalDate): String {
-    val names = listOf("월", "화", "수", "목", "금", "토", "일")
-    return "${date.monthValue}월 ${date.dayOfMonth}일 ${names[date.dayOfWeek.value - 1]}요일"
+월 ${date.dayOfMonth}일 ${names[date.dayOfWeek.value - 1]}요일"
 }

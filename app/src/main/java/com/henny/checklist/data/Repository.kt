@@ -8,6 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,9 +19,20 @@ import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.util.UUID
 
-data class DayStat(val date: LocalDate, val done: Int, val total: Int)
+data class DayStat(
+    val date: LocalDate,
+    val done: Int,
+    val total: Int,
+    val points: Int = 0
+)
 
-data class RangeStat(val done: Int, val total: Int, val perDay: List<DayStat>) {
+data class RangeStat(
+    val done: Int,
+    val total: Int,
+    val perDay: List<DayStat>,
+    /** 이 기간에 실제로 획득한 마일리지 합계. */
+    val points: Int = 0
+) {
     val rate: Int get() = if (total == 0) 0 else (done * 100) / total
     /** 할 일이 하나라도 있었고 전부 끝낸 날. */
     val perfectDays: Int get() = perDay.count { it.total > 0 && it.done == it.total }
@@ -35,6 +47,7 @@ class Repository private constructor(private val app: Context) {
     private val store = LocalStore(app)
     private val syncLock = Mutex()
     private var pendingPush: Job? = null
+    private var liveJob: Job? = null
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val _settings = MutableStateFlow(store.loadSettings())
@@ -88,12 +101,16 @@ class Repository private constructor(private val app: Context) {
 
         val assignments = p.assignments
             .filter { it.workerId == workerId && it.date == dateKey }
-            .map { TodayTask(it.id, it.title, it.dueMinute, it.remindBefore, true, doneMap[it.id]) }
+            .map {
+                TodayTask(it.id, it.title, it.dueMinute, it.remindBefore, true, doneMap[it.id], it.points)
+            }
 
         val routines = p.routines
             .filter { it.workerId == workerId && it.active && dow in it.days }
             .sortedWith(compareBy({ it.order }, { it.title }))
-            .map { TodayTask(it.id, it.title, it.dueMinute, it.remindBefore, false, doneMap[it.id]) }
+            .map {
+                TodayTask(it.id, it.title, it.dueMinute, it.remindBefore, false, doneMap[it.id], it.points)
+            }
 
         return assignments + routines
     }
@@ -118,7 +135,7 @@ class Repository private constructor(private val app: Context) {
                 t.done -> null
                 else -> now
             }
-            LogItem(t.id, t.title, doneAt)
+            LogItem(t.id, t.title, doneAt, t.points)
         }
         writeDay(workerId, date, DayLog(date.key(), items, now))
     }
@@ -147,6 +164,62 @@ class Repository private constructor(private val app: Context) {
         }
     }
 
+    // ------------------------------------------------------ 화면이 켜져 있는 동안
+
+    /**
+     * 앱이 화면에 보이는 동안만 도는 동기화 루프.
+     *
+     * 매번 문서를 통째로 받으면 비싸므로, 가능한 백엔드에서는 `updatedAt` 한 값만
+     * 읽어 보고 달라졌을 때만 전체를 받는다. 확인 한 번이 수십 바이트라
+     * 짧은 주기로 돌려도 부담이 없다.
+     */
+    fun startLiveSync() {
+        if (liveJob?.isActive == true) return
+        liveJob = scope.launch {
+            runCatching { sync() }
+            while (isActive) {
+                delay(if (remote().supportsFieldFetch) LIVE_TICK_CHEAP else LIVE_TICK_FULL)
+                runCatching { pollForChanges() }
+            }
+        }
+    }
+
+    /** 화면에서 벗어날 때. 미뤄둔 업로드는 마저 끝낸다. */
+    fun stopLiveSync() {
+        liveJob?.cancel()
+        liveJob = null
+        flushPush()
+    }
+
+    private suspend fun pollForChanges() {
+        val s = _settings.value
+        val net = remote()
+        if (!net.configured) return
+        if (!net.supportsFieldFetch) {
+            // 값싼 확인이 안 되는 백엔드는 그냥 전체를 받는다. 대신 주기가 길다.
+            sync()
+            return
+        }
+
+        var changed = false
+        if (s.planBin.isNotBlank()) {
+            val at = net.getUpdatedAt(s.planBin)
+            if (at != null && at > _plan.value.updatedAt) changed = true
+        }
+        // 내 기록은 내가 주인이라 확인할 필요가 없다. 관리자만 남의 기록을 살핀다.
+        if (!changed && s.roleEnum == Role.MANAGER) {
+            for (worker in _plan.value.workers) {
+                val handle = s.progressBins[worker.id] ?: continue
+                val at = net.getUpdatedAt(handle) ?: continue
+                if (at > progressOf(worker.id).updatedAt) {
+                    changed = true
+                    break
+                }
+            }
+        }
+        if (changed) sync()
+    }
+
     /** 앱이 화면에서 내려갈 때처럼, 미뤄둔 업로드를 지금 끝내야 할 때. */
     fun flushPush() {
         if (pendingPush?.isActive == true) {
@@ -166,8 +239,12 @@ class Repository private constructor(private val app: Context) {
         val merged = archive.associate { it.month to it }.toMutableMap()
         old.forEach { (dateKey, log) ->
             val month = dateKey.substring(0, 7)
-            val prev = merged[month] ?: MonthRollup(month, 0, 0)
-            merged[month] = prev.copy(done = prev.done + log.doneCount, total = prev.total + log.total)
+            val prev = merged[month] ?: MonthRollup(month, 0, 0, 0)
+            merged[month] = prev.copy(
+                done = prev.done + log.doneCount,
+                total = prev.total + log.total,
+                points = prev.points + log.earnedPoints
+            )
         }
         return copy(
             days = keep.associate { it.key to it.value },
@@ -186,14 +263,31 @@ class Repository private constructor(private val app: Context) {
         while (!d.isAfter(last)) {
             val log = logs[d.key()]
             perDay += if (log != null && log.total > 0) {
-                DayStat(d, log.doneCount, log.total)
+                DayStat(d, log.doneCount, log.total, log.earnedPoints)
             } else {
                 // 작업자가 앱을 아예 안 연 날도 "해야 했던 만큼"을 총량에 넣는다.
-                DayStat(d, 0, expectedCount(workerId, d))
+                DayStat(d, 0, expectedCount(workerId, d), 0)
             }
             d = d.plusDays(1)
         }
-        return RangeStat(perDay.sumOf { it.done }, perDay.sumOf { it.total }, perDay)
+        return RangeStat(
+            done = perDay.sumOf { it.done },
+            total = perDay.sumOf { it.total },
+            perDay = perDay,
+            points = perDay.sumOf { it.points }
+        )
+    }
+
+    /** 지금까지 이 작업자가 모은 마일리지 전부. 접어둔 월별 합계까지 더한다. */
+    fun lifetimePoints(workerId: String): Int {
+        val p = progressOf(workerId)
+        return p.days.values.sumOf { it.earnedPoints } + p.archive.sumOf { it.points }
+    }
+
+    /** 오늘 걸려 있는 배점 중 지금까지 챙긴 몫. */
+    fun pointsToday(workerId: String, date: LocalDate = LocalDate.now()): Pair<Int, Int> {
+        val tasks = tasksFor(workerId, date)
+        return tasks.filter { it.done }.sumOf { it.points } to tasks.sumOf { it.points }
     }
 
     fun weekStat(workerId: String, anchor: LocalDate = LocalDate.now()): RangeStat {
@@ -284,7 +378,13 @@ class Repository private constructor(private val app: Context) {
         updateSettings { it.copy(progressBins = it.progressBins - workerId) }
     }
 
-    fun addRoutine(workerId: String, title: String, days: List<Int>, dueMinute: Int?) {
+    fun addRoutine(
+        workerId: String,
+        title: String,
+        days: List<Int>,
+        dueMinute: Int?,
+        points: Int = DEFAULT_POINTS
+    ) {
         mutatePlan { p ->
             val order = (p.routines.filter { it.workerId == workerId }.maxOfOrNull { it.order } ?: 0) + 1
             p.copy(
@@ -294,7 +394,8 @@ class Repository private constructor(private val app: Context) {
                     title = title.trim(),
                     days = days,
                     dueMinute = dueMinute,
-                    order = order
+                    order = order,
+                    points = points
                 )
             )
         }
@@ -306,7 +407,13 @@ class Repository private constructor(private val app: Context) {
     fun deleteRoutine(id: String) =
         mutatePlan { p -> p.copy(routines = p.routines.filterNot { it.id == id }) }
 
-    fun addAssignment(workerId: String, title: String, date: LocalDate, dueMinute: Int?) {
+    fun addAssignment(
+        workerId: String,
+        title: String,
+        date: LocalDate,
+        dueMinute: Int?,
+        points: Int = DEFAULT_POINTS
+    ) {
         mutatePlan { p ->
             val fresh = p.assignments.filterNot {
                 runCatching { LocalDate.parse(it.date, DATE_FMT).isBefore(LocalDate.now().minusDays(45)) }
@@ -318,7 +425,8 @@ class Repository private constructor(private val app: Context) {
                     workerId = workerId,
                     title = title.trim(),
                     date = date.key(),
-                    dueMinute = dueMinute
+                    dueMinute = dueMinute,
+                    points = points
                 )
             )
         }
@@ -374,12 +482,15 @@ class Repository private constructor(private val app: Context) {
         if (s.planBin.isNotBlank()) {
             val remotePlanText = net.get(s.planBin)
             val remotePlan = remotePlanText?.let { runCatching { store.decodePlan(it) }.getOrNull() }
-            if (remotePlan != null && remotePlan.updatedAt > _plan.value.updatedAt) {
-                _plan.value = remotePlan
-                store.savePlan(remotePlan)
-                reloadProgress()
-            } else {
-                net.put(s.planBin, store.encode(_plan.value))
+            when {
+                remotePlan != null && remotePlan.updatedAt > _plan.value.updatedAt -> {
+                    _plan.value = remotePlan
+                    store.savePlan(remotePlan)
+                    reloadProgress()
+                }
+                // 양쪽이 같으면 올릴 것이 없다. 매번 PUT 하면 호출만 낭비된다.
+                remotePlan != null && remotePlan.updatedAt == _plan.value.updatedAt -> Unit
+                else -> net.put(s.planBin, store.encode(_plan.value))
             }
         }
         // 작업자들의 기록은 읽기만 한다.
@@ -415,7 +526,10 @@ class Repository private constructor(private val app: Context) {
                 _progress.value = _progress.value + (s.workerId to merged)
                 store.saveProgress(merged)
             }
-            net.put(handle, store.encode(merged))
+            // 내 기록의 주인은 나다. 원격이 이미 같은 시점이면 올릴 필요가 없다.
+            if (remoteProgress == null || merged.updatedAt > remoteProgress.updatedAt) {
+                net.put(handle, store.encode(merged))
+            }
         }
     }
 
@@ -429,7 +543,12 @@ class Repository private constructor(private val app: Context) {
         val archive = (a.archive + b.archive)
             .groupBy { it.month }
             .map { (month, list) ->
-                MonthRollup(month, list.maxOf { it.done }, list.maxOf { it.total })
+                MonthRollup(
+                    month,
+                    list.maxOf { it.done },
+                    list.maxOf { it.total },
+                    list.maxOf { it.points }
+                )
             }
             .sortedBy { it.month }
         return a.copy(
@@ -562,7 +681,14 @@ class Repository private constructor(private val app: Context) {
     }
 
     companion object {
-        private const val PUSH_DEBOUNCE_MS = 12_000L
+        /** 체크를 연달아 누를 때만 묶어 주면 되므로 짧게 잡는다. */
+        private const val PUSH_DEBOUNCE_MS = 2_000L
+
+        /** updatedAt 한 값만 읽는 백엔드(Firebase)에서 쓰는 확인 주기. */
+        private const val LIVE_TICK_CHEAP = 15_000L
+
+        /** 문서를 통째로 받아야 하는 백엔드에서 쓰는 확인 주기. */
+        private const val LIVE_TICK_FULL = 60_000L
         private const val EMPTY_DOC = "{\"schema\":1,\"updatedAt\":0}"
         private val FAMILY_PATH = Regex("/henny/([^/]+)/plan\\.json$")
 

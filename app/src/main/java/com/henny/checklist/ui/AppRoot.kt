@@ -61,6 +61,9 @@ fun AppRoot(repo: Repository) {
                 val streak = remember(progress, plan, workerId, today) {
                     repo.streak(workerId)
                 }
+                val lifetimePoints = remember(progress, workerId) {
+                    repo.lifetimePoints(workerId)
+                }
 
                 WorkerScreen(
                     workerName = worker?.name ?: "나",
@@ -70,10 +73,31 @@ fun AppRoot(repo: Repository) {
                     tasks = tasks,
                     week = week,
                     streak = streak,
+                    lifetimePoints = lifetimePoints,
+                    syncing = syncing,
+                    syncLabel = syncLabel(settings, today),
+                    onSync = { scope.launch { repo.sync() } },
                     onToggle = { taskId -> repo.toggle(workerId, today, taskId) },
                     onOpenSettings = { showSettings = true }
                 )
             }
         }
     }
+}
+
+
+/** 헤더에 보여줄 한 줄. 언제 맞췄는지 알면 지금 값이 최신인지 판단할 수 있다. */
+private fun syncLabel(settings: com.henny.checklist.data.Settings, today: LocalDate): String {
+    val names = listOf("월", "화", "수", "목", "금", "토", "일")
+    val date = "${today.monthValue}월 ${today.dayOfMonth}일 ${names[today.dayOfWeek.value - 1]}요일"
+    if (settings.backendEnum == com.henny.checklist.data.Backend.NONE) return date
+    if (settings.lastSyncError.isNotBlank()) return "$date · 연결 안 됨"
+    if (settings.lastSyncAt == 0L) return date
+    val minutes = (System.currentTimeMillis() - settings.lastSyncAt) / 60000
+    val when_ = when {
+        minutes < 1 -> "방금 맞춤"
+        minutes < 60 -> "${minutes}분 전 맞춤"
+        else -> "${minutes / 60}시간 전 맞춤"
+    }
+    return "$date · $when_"
 }

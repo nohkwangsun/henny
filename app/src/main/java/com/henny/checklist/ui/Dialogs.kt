@@ -3,6 +3,7 @@ package com.henny.checklist.ui
 import android.app.TimePickerDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,7 +31,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.henny.checklist.data.DEFAULT_POINTS
 import com.henny.checklist.data.minuteToText
 
 private val DAY_NAMES = listOf("월", "화", "수", "목", "금", "토", "일")
@@ -118,12 +121,51 @@ fun TimeField(
     }
 }
 
+/** 마일리지 입력. 숫자만 받고, 자주 쓰는 값은 눌러서 채운다. */
+@Composable
+fun PointsField(
+    points: Int,
+    onChange: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var text by remember { mutableStateOf(points.toString()) }
+    Column(modifier.fillMaxWidth()) {
+        OutlinedTextField(
+            value = text,
+            onValueChange = { v ->
+                val digits = v.filter { it.isDigit() }.take(6)
+                text = digits
+                onChange(digits.toIntOrNull() ?: 0)
+            },
+            label = { Text("마일리지") },
+            trailingIcon = { Text("P", style = MaterialTheme.typography.bodyMedium) },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.fillMaxWidth()
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            listOf(50, 100, 200, 500).forEach { preset ->
+                TextButton(onClick = {
+                    text = preset.toString()
+                    onChange(preset)
+                }) {
+                    Text(
+                        text = "$preset",
+                        fontWeight = if (points == preset) FontWeight.Bold else FontWeight.Normal
+                    )
+                }
+            }
+        }
+    }
+}
+
 data class RoutineDraft(
     val title: String = "",
     val days: List<Int> = listOf(1, 2, 3, 4, 5),
     val dueMinute: Int? = null,
     val remindBefore: Int = 60,
-    val active: Boolean = true
+    val active: Boolean = true,
+    val points: Int = DEFAULT_POINTS
 )
 
 @Composable
@@ -149,7 +191,9 @@ fun RoutineDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(12.dp))
+                PointsField(draft.points) { draft = draft.copy(points = it) }
+                Spacer(Modifier.height(8.dp))
                 Text("하는 요일", style = MaterialTheme.typography.labelLarge)
                 Spacer(Modifier.height(8.dp))
                 DayPicker(draft.days) { draft = draft.copy(days = it) }
@@ -276,6 +320,51 @@ fun ReminderDialog(
             TextButton(onClick = { onSave(draft) }, enabled = draft.text.isNotBlank()) {
                 Text("저장")
             }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } }
+    )
+}
+
+
+data class AssignmentDraft(
+    val title: String = "",
+    val points: Int = DEFAULT_POINTS,
+    val dueMinute: Int? = null
+)
+
+/** 관리자가 오늘 하루만 배정하는 작업. 배점을 함께 정한다. */
+@Composable
+fun AssignmentDialog(
+    workerName: String,
+    onSave: (AssignmentDraft) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var draft by remember { mutableStateOf(AssignmentDraft()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("$workerName 에게 임시 작업") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = draft.title,
+                    onValueChange = { draft = draft.copy(title = it) },
+                    label = { Text("작업 내용") },
+                    placeholder = { Text("예: 창고 재고 확인") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(12.dp))
+                PointsField(draft.points) { draft = draft.copy(points = it) }
+                Spacer(Modifier.height(4.dp))
+                TimeField("마감 시각", draft.dueMinute) { draft = draft.copy(dueMinute = it) }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { if (draft.title.isNotBlank()) onSave(draft) },
+                enabled = draft.title.isNotBlank()
+            ) { Text("배정") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } }
     )

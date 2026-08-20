@@ -4,6 +4,9 @@ import kotlinx.serialization.Serializable
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
+/** 관리자가 따로 정하지 않았을 때의 기본 배점. */
+const val DEFAULT_POINTS: Int = 100
+
 val DATE_FMT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
 val MONTH_FMT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM")
 
@@ -35,7 +38,9 @@ data class Routine(
     val dueMinute: Int? = null,
     val remindBefore: Int = 60,
     val active: Boolean = true,
-    val order: Int = 0
+    val order: Int = 0,
+    /** 이 작업을 끝내면 받는 마일리지. */
+    val points: Int = DEFAULT_POINTS
 )
 
 /** 관리자가 그날 하루만 배정하는 임시 작업. */
@@ -47,7 +52,8 @@ data class Assignment(
     val date: String,
     val dueMinute: Int? = null,
     val remindBefore: Int = 60,
-    val note: String = ""
+    val note: String = "",
+    val points: Int = DEFAULT_POINTS
 )
 
 /** 하루 중 정해진 시각에 울리는 점검 알림. */
@@ -78,7 +84,12 @@ data class Plan(
 data class LogItem(
     val taskId: String,
     val title: String,
-    val doneAt: Long? = null
+    val doneAt: Long? = null,
+    /**
+     * 그날 이 작업에 걸려 있던 배점을 그대로 박아 둔다.
+     * 나중에 관리자가 배점을 바꿔도 이미 쌓인 마일리지가 흔들리지 않는다.
+     */
+    val points: Int = 0
 ) {
     val done: Boolean get() = doneAt != null
 }
@@ -91,11 +102,18 @@ data class DayLog(
 ) {
     val doneCount: Int get() = items.count { it.done }
     val total: Int get() = items.size
+    val earnedPoints: Int get() = items.filter { it.done }.sumOf { it.points }
+    val offeredPoints: Int get() = items.sumOf { it.points }
 }
 
 /** 오래된 날짜를 접어둔 월별 합계. */
 @Serializable
-data class MonthRollup(val month: String, val done: Int, val total: Int)
+data class MonthRollup(
+    val month: String,
+    val done: Int,
+    val total: Int,
+    val points: Int = 0
+)
 
 /** 작업자 한 명이 쓰고 관리자가 읽는 문서. */
 @Serializable
@@ -141,7 +159,8 @@ data class TodayTask(
     val dueMinute: Int?,
     val remindBefore: Int,
     val isAssignment: Boolean,
-    val doneAt: Long?
+    val doneAt: Long?,
+    val points: Int = DEFAULT_POINTS
 ) {
     val done: Boolean get() = doneAt != null
 }

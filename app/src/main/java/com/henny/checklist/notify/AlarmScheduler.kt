@@ -91,7 +91,9 @@ object AlarmScheduler {
                     else -> "남은 작업 ${undone.size}개"
                 }
                 val text = if (isCheckIn && undone.isNotEmpty()) {
-                    fire.text + "\n" + undone.joinToString("\n") { "• " + it.title }
+                    fire.text + "\n" +
+                        undone.joinToString("\n") { "• ${it.title} (${it.points}P)" } +
+                        "\n남은 마일리지 ${undone.sumOf { it.points }}P"
                 } else {
                     fire.text
                 }
@@ -147,7 +149,7 @@ object AlarmScheduler {
                     out += Fire(
                         at = date.atStartOfDay().plusMinutes(remindAt.toLong()),
                         title = task.title,
-                        text = "${minuteToText(due)}까지입니다.",
+                        text = "${minuteToText(due)}까지입니다. (${task.points}P)",
                         workerId = workerId,
                         onlyIfIncomplete = true,
                         channel = Notifications.CHANNEL_TODO,
@@ -160,7 +162,8 @@ object AlarmScheduler {
                 val summary = plan.workers.joinToString("  ") { worker ->
                     val tasks = repo.tasksFor(worker.id, date)
                     val done = tasks.count { it.done }
-                    "${worker.name} $done/${tasks.size}"
+                    val earned = tasks.filter { it.done }.sumOf { it.points }
+                    "${worker.name} $done/${tasks.size} (${earned}P)"
                 }
                 if (summary.isNotBlank()) {
                     out += Fire(

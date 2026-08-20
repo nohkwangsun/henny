@@ -167,6 +167,8 @@ private fun ManagerToday(
                 val accent = workerColor(index)
                 val tasks = repo.tasksFor(worker.id, today)
                 val done = tasks.count { it.done }
+                val earned = tasks.filter { it.done }.sumOf { it.points }
+                val offered = tasks.sumOf { it.points }
                 SectionCard {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
@@ -183,6 +185,14 @@ private fun ManagerToday(
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            if (tasks.isNotEmpty()) {
+                                Text(
+                                    text = "마일리지 $earned / $offered P",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = accent
+                                )
+                            }
                         }
                         ProgressRing(
                             done = done,
@@ -229,6 +239,14 @@ private fun ManagerToday(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = "${task.points}P",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = if (task.done) accent
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                     Spacer(Modifier.height(8.dp))
@@ -243,13 +261,10 @@ private fun ManagerToday(
     }
 
     assignmentFor?.let { worker ->
-        TextPromptDialog(
-            title = "${worker.name}에게 임시 작업",
-            label = "작업 내용",
-            placeholder = "예: 창고 재고 확인",
-            confirmText = "보내기",
-            onConfirm = {
-                repo.addAssignment(worker.id, it, today, null)
+        AssignmentDialog(
+            workerName = worker.name,
+            onSave = { draft ->
+                repo.addAssignment(worker.id, draft.title, today, draft.dueMinute, draft.points)
                 assignmentFor = null
             },
             onDismiss = { assignmentFor = null }
@@ -305,7 +320,7 @@ private fun ManagerStats(repo: Repository, plan: Plan) {
             Spacer(Modifier.height(14.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 StatPill("달성률", "${week.rate}%", accent, Modifier.weight(1f))
-                StatPill("해낸 일", "${week.done}개", accent, Modifier.weight(1f))
+                StatPill("마일리지", "${week.points}P", accent, Modifier.weight(1f))
                 StatPill("완벽한 날", "${week.perfectDays}일", accent, Modifier.weight(1f))
             }
         }
@@ -315,12 +330,13 @@ private fun ManagerStats(repo: Repository, plan: Plan) {
             Spacer(Modifier.height(14.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 StatPill("달성률", "${month.rate}%", accent, Modifier.weight(1f))
-                StatPill("해낸 일", "${month.done}개", accent, Modifier.weight(1f))
+                StatPill("마일리지", "${month.points}P", accent, Modifier.weight(1f))
                 StatPill("완벽한 날", "${month.perfectDays}일", accent, Modifier.weight(1f))
             }
             Spacer(Modifier.height(10.dp))
             Text(
-                text = "전체 ${month.total}개 중 ${month.done}개 완료",
+                text = "전체 ${month.total}개 중 ${month.done}개 완료 · " +
+                    "누적 마일리지 ${repo.lifetimePoints(selected)}P",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -406,7 +422,7 @@ private fun ManagerTasks(repo: Repository, plan: Plan) {
                             else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = daysText(routine.days) +
+                            text = "${routine.points}P · " + daysText(routine.days) +
                                 (routine.dueMinute?.let { " · ${minuteToText(it)}까지" } ?: "") +
                                 (if (routine.active) "" else " · 쉼"),
                             style = MaterialTheme.typography.labelMedium,
@@ -492,7 +508,7 @@ private fun ManagerTasks(repo: Repository, plan: Plan) {
             initial = RoutineDraft(),
             isNew = true,
             onSave = { draft ->
-                repo.addRoutine(selected, draft.title, draft.days, draft.dueMinute)
+                repo.addRoutine(selected, draft.title, draft.days, draft.dueMinute, draft.points)
                 creating = false
             },
             onDelete = null,
@@ -507,7 +523,8 @@ private fun ManagerTasks(repo: Repository, plan: Plan) {
                 days = routine.days,
                 dueMinute = routine.dueMinute,
                 remindBefore = routine.remindBefore,
-                active = routine.active
+                active = routine.active,
+                points = routine.points
             ),
             isNew = false,
             onSave = { draft ->
@@ -517,7 +534,8 @@ private fun ManagerTasks(repo: Repository, plan: Plan) {
                         days = draft.days,
                         dueMinute = draft.dueMinute,
                         remindBefore = draft.remindBefore,
-                        active = draft.active
+                        active = draft.active,
+                        points = draft.points
                     )
                 )
                 editing = null
