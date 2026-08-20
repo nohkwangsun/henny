@@ -3,6 +3,11 @@ name: Deploy web app
 # 예전에 쓰시던 흐름과 같은 자리입니다.
 #   git push -> Actions -> Pages 배포 -> 앱을 여는 순간 최신
 # webhook 도 서버 스크립트도 필요 없습니다. GitHub 이 그 역할을 합니다.
+#
+# 배포는 "기본 브랜치"에서만 됩니다. github-pages 환경이 기본 브랜치만
+# 허용하기 때문에, 기본 브랜치가 아닌 곳에서 돌리면 로그 한 줄 없이
+# 몇 초 만에 실패합니다. Settings -> General -> Default branch 를
+# main 으로 맞춰 두세요.
 on:
   push:
     branches:
@@ -41,6 +46,14 @@ jobs:
       - name: Test core logic
         run: node tools/test_core.mjs
 
+      # 배포하면 곧바로 가족 모두에게 반영되므로, 화면이 깨진 채로 나가면
+      # 걸러 줄 사람이 없다. 진짜 브라우저로 첫 설정부터 체크까지 눌러 본다.
+      - name: Test screen flow
+        run: |
+          npm install --no-save --no-audit --no-fund playwright
+          npx playwright install --with-deps chromium
+          node tools/test_flow.mjs
+
       - name: Assemble site
         run: |
           # 서비스 워커가 캐시를 갈아치우는 기준이자, 화면에 표시할 버전이다.
@@ -51,10 +64,12 @@ jobs:
           cp docs/privacy.html web/privacy.html
           echo "배포 버전: ${stamp}"
 
+      # Pages 는 사람이 한 번 켜야 한다(완료됨).
+      #   저장소 -> Settings -> Pages -> Source 를 "GitHub Actions" 로
+      # enablement 는 액션이 직접 켜 보라는 뜻인데, 워크플로 토큰에는 저장소
+      # 설정을 바꿀 권한이 없어 실패한다. 켜져 있으면 무시되므로 남겨 둔다.
       - uses: actions/configure-pages@v5
         with:
-          # 저장소에 Pages 가 아직 안 켜져 있으면 이 액션이 직접 켠다.
-          # 설정 화면을 손댈 필요가 없다.
           enablement: true
 
       - uses: actions/upload-pages-artifact@v3

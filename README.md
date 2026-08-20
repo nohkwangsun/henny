@@ -320,23 +320,51 @@ Android SDK가 설치되어 있고 `local.properties`에 `sdk.dir`이 잡혀 있
 ## 파일 구조
 
 ```
+web/                     실제 앱. 여기를 고치면 곧바로 모두에게 반영된다.
+  index.html             껍데기 문서
+  core.js                자료 구조, 통계, 동기화, 연결 코드, 알람 일정 계산
+  ui.js                  작업자 화면 / 관리자 4개 탭 / 첫 설정 / 설정
+  app.css                화면 서식
+  sw.js                  서비스 워커. 네트워크를 먼저 보고 캐시는 예비용
+  manifest.webmanifest   홈 화면 추가용 정보
 app/src/main/java/com/henny/checklist/
-  MainActivity.kt        앱 진입점, 알림 권한, 열 때마다 동기화
-  data/
-    Models.kt            Plan / Progress 등 저장 구조
-    LocalStore.kt        JSON 파일 읽고 쓰기
-    RemoteStore.kt       JSONBin / 직접 주소 백엔드
-    Repository.kt        단일 상태 보관소, 통계, 동기화, 연결 코드
+  MainActivity.kt        WebView 를 띄우고 알림 다리(HennyShell)를 연다
   notify/
+    ScheduleStore.kt     웹이 넘겨준 알람 일정을 보관
     AlarmScheduler.kt    "다음 하나"만 예약하는 알람 계산
     AlarmReceiver.kt     알람이 울렸을 때
     BootReceiver.kt      재부팅 후 재예약
     Notifications.kt     알림 채널과 표시
-  ui/                    Compose 화면들
-docs/                    GitHub Pages로 올리는 개인정보처리방침
+docs/privacy.html        개인정보처리방침 (배포 때 web/ 으로 함께 실린다)
 store/                   Play 스토어 등록정보용 아이콘·기능 그래픽
-tools/make_store_graphics.py   위 그래픽 생성 스크립트
+tools/test_core.mjs      core.js 판단 규칙 검사 (배포 전에 자동 실행)
 tools/sanity_check.py    빌드 전 실수 검사
+tools/make_store_graphics.py   스토어 그래픽 생성 스크립트
 INSTALL.md               설치 방법 고르기 (사이드로딩 vs 스토어)
 PLAY_STORE.md            플레이 출시 절차
 ```
+
+---
+
+## 배포 흐름
+
+```
+git push (main)  ->  Actions: 검사 -> Pages 배포  ->  가족이 앱을 여는 순간 최신
+```
+
+APK 는 껍데기라 거의 바뀌지 않습니다. 화면과 규칙은 `web/` 에 있으므로
+하루에 몇 번을 고쳐도 다시 설치할 필요가 없습니다.
+
+### 처음 한 번만 (저장소 설정 2가지)
+
+1. **Settings → Pages → Source** 를 **GitHub Actions** 로. *(완료)*
+2. **Settings → General → Default branch** 를 **main** 으로.
+
+2번을 빠뜨리면 배포가 **로그 한 줄 없이 몇 초 만에 실패**합니다. Pages 가 쓰는
+`github-pages` 환경이 기본 브랜치에서 온 배포만 받기 때문입니다. 실패 화면에
+아무 단서가 없어서 원인을 찾기 어려운 부분이라 적어 둡니다.
+
+두 가지가 맞으면 주소는 이렇습니다.
+
+- 앱: `https://nohkwangsun.github.io/henny/`
+- 개인정보처리방침: `https://nohkwangsun.github.io/henny/privacy.html`
