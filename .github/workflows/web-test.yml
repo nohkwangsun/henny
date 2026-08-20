@@ -1,0 +1,34 @@
+name: Test web app
+
+# 개발 브랜치에서 실험할 때 쓰는 검사입니다.
+# main 으로 보내기 전에 여기서 먼저 깨지는지 봅니다.
+# main 에 올라간 뒤에는 Deploy web app 이 배포 직전에 같은 검사를 다시 돌립니다.
+on:
+  push:
+    branches-ignore:
+      - main
+    paths:
+      - 'web/**'
+      - 'tools/test_core.mjs'
+      - 'tools/test_flow.mjs'
+      - '.github/workflows/web-test.yml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Test core logic
+        run: node tools/test_core.mjs
+
+      - name: Test screen flow
+        run: |
+          npm install --no-save --no-audit --no-fund playwright
+          npx playwright install --with-deps chromium
+          node tools/test_flow.mjs
