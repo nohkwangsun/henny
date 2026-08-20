@@ -5,8 +5,11 @@
  */
 import {
   Repo, BUILD, DEFAULT_POINTS, dateKey, addDays, dayName, daysText,
-  minuteToText, isoDow, newId, publishSchedule, shell,
+  minuteToText, isoDow, newId, publishSchedule, shell, importLegacy,
 } from './core.js';
+
+// Repo 를 만들기 전에 해야 한다. Repo 는 만들어질 때 저장된 값을 읽는다.
+const restored = importLegacy();
 
 const repo = new Repo();
 const app = document.getElementById('app');
@@ -129,11 +132,12 @@ function viewSetup() {
   let body = '';
 
   if (setupStep === 'ROLE') {
-    body = `<div class="card"><h3>이 기기는 어느 쪽인가요?</h3>
+    body = `<div class="card"><h3>시작하기</h3>
       <div class="stack">
-        <button class="wide" data-act="role-manager">관리자 기기예요</button>
-        <button class="wide ghost" data-act="role-worker">작업자 기기예요</button>
-        <button class="wide plain" data-act="go-code">쓰던 기기 복구 (코드 있음)</button>
+        <button class="wide" data-act="role-manager">팀을 새로 만들래요</button>
+        <p class="muted" style="margin:-4px 0 8px">작업자를 등록하고 할 일을 정합니다.</p>
+        <button class="wide ghost" data-act="go-code">코드를 받았어요</button>
+        <p class="muted" style="margin:-4px 0 0">작업자 연결, 관리자 추가, 기기 복구 모두 이 쪽입니다.</p>
       </div></div>`;
   } else if (setupStep === 'WORKERS') {
     body = `<div class="card"><h3>작업자를 등록해 주세요</h3>
@@ -145,22 +149,53 @@ function viewSetup() {
         <button class="wide" data-act="setup-next" ${repo.plan.workers.length ? '' : 'disabled'}>다음</button>
       </div></div>`;
   } else if (setupStep === 'STORAGE') {
-    body = `<div class="card"><h3>기기끼리 어떻게 주고받을까요?</h3>
-      <p class="muted">구글 Firebase 무료 데이터베이스를 쓰면 자료가 내 구글 계정 안에 남습니다.
-      콘솔에서 만든 주소를 붙여넣으면 작업자 기기와 이어집니다.</p>
+    body = `<div class="card"><h3>기기끼리 자료를 주고받을 곳</h3>
+      <p class="muted">구글이 주는 무료 저장 공간을 씁니다. 구글 계정만 있으면 되고,
+      자료는 내 계정 안에 남습니다. 5분이면 끝납니다.</p>
+
+      <ol class="guide">
+        <li><a href="https://console.firebase.google.com/" target="_blank" rel="noopener">console.firebase.google.com</a> 열기
+          <span class="muted">구글 계정으로 로그인합니다.</span></li>
+        <li><b>프로젝트 만들기</b> → 이름은 아무거나 (예: henny)
+          <span class="muted">애널리틱스는 꺼도 됩니다.</span></li>
+        <li>왼쪽 메뉴 <b>빌드 → Realtime Database</b> → <b>데이터베이스 만들기</b>
+          <span class="muted">위치는 그대로 두고, 보안 규칙은 <b>테스트 모드</b>를 고릅니다.</span></li>
+        <li>화면 위에 나온 주소를 아래에 붙여넣기
+          <span class="muted">https:// 로 시작해 .firebasedatabase.app 이나 .firebaseio.com 으로 끝납니다.</span></li>
+      </ol>
+
       <div class="stack">
-        <label class="field"><span>실시간 데이터베이스 주소</span>
-          <input id="fb-url" value="${esc(s.firebaseDb)}" placeholder="https://…firebasedatabase.app"></label>
-        <label class="field"><span>비밀키 (규칙으로 열어뒀다면 비워두세요)</span>
-          <input id="fb-key" value="${esc(s.apiKey)}"></label>
+        <label class="field"><span>주소</span>
+          <input id="fb-url" value="${esc(s.firebaseDb)}" placeholder="https://…firebasedatabase.app"
+            autocomplete="off" autocapitalize="off" spellcheck="false"></label>
         <button class="wide" data-act="connect">연결하고 시작</button>
-        <button class="wide plain" data-act="later">나중에 하기 (이 기기에서만 사용)</button>
-      </div></div>`;
+        <button class="wide plain" data-act="later">건너뛰기 (이 기기에서만 사용)</button>
+      </div>
+
+      <details style="margin-top:14px">
+        <summary class="muted">테스트 모드가 뭔가요? / 30일 뒤에는요?</summary>
+        <p class="muted">테스트 모드는 규칙이 30일 뒤 잠기게 되어 있습니다. 그전에
+        Realtime Database 의 <b>규칙</b> 탭에서 아래를 붙여넣고 게시하세요.
+        자료는 아무도 못 찾는 무작위 주소 아래에 두므로, 이 규칙으로도 연결 코드를
+        받은 사람만 닿을 수 있습니다.</p>
+        <pre class="code">{"rules":{"henny":{"$team":{".read":true,".write":true}}}}</pre>
+      </details>
+
+      <details style="margin-top:8px">
+        <summary class="muted">비밀키를 쓰고 싶어요</summary>
+        <div class="stack" style="margin-top:8px">
+          <label class="field"><span>비밀키 (비워두면 규칙만으로 씁니다)</span>
+            <input id="fb-key" value="${esc(s.apiKey)}" autocomplete="off" spellcheck="false"></label>
+        </div>
+      </details>
+    </div>`;
   } else if (setupStep === 'CODE') {
     body = `<div class="card"><h3>코드를 붙여넣으세요</h3>
+      <p class="muted">관리자 기기의 <b>설정</b> 탭에서 코드를 받을 수 있습니다.
+      작업자 코드를 넣으면 작업자 기기가 되고, 관리자 코드를 넣으면 관리자 기기가 됩니다.</p>
       <div class="stack">
-        <label class="field"><span>연결 코드 또는 복구 코드</span>
-          <input id="code-input" placeholder="HENNY2:..."></label>
+        <label class="field"><span>코드</span>
+          <input id="code-input" placeholder="HENNY2:..." autocomplete="off" spellcheck="false"></label>
         <button class="wide" data-act="apply-code">연결하기</button>
         <button class="wide plain" data-act="solo">코드 없이 이 기기에서만 쓰기</button>
       </div></div>`;
@@ -399,9 +434,11 @@ function viewSettings(isManager) {
         팀 저장소를 쓰고 있으면 잠시 뒤 자료가 다시 내려옵니다.
         <button class="plain" data-act="clear-broken">알림 지우기</button></p>` : ''}
       ${isManager ? `<div style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
-        <b>복구 코드</b>
-        <p class="muted">기기를 바꾸거나 앱을 지웠다 깔 때 이 코드를 넣으면 원래 자료로 돌아옵니다. 지금 저장해 두세요.</p>
-        <button class="ghost" data-act="backup-code">복구 코드 보기</button>
+        <b>관리자 코드</b>
+        <p class="muted">관리자는 여러 명이어도 됩니다. 다른 사람 기기에서 이 코드를 넣으면
+        같은 팀의 관리자가 되어 함께 작업을 정할 수 있습니다.
+        기기를 바꾸거나 앱을 지웠다 깔 때도 이 코드로 돌아옵니다. 지금 저장해 두세요.</p>
+        <button class="ghost" data-act="backup-code">관리자 코드 보기</button>
       </div>` : ''}
       <div style="margin-top:12px">
         <button class="danger" data-act="reset">이 기기 설정 초기화</button>
@@ -453,8 +490,18 @@ const ACTIONS = {
   }),
 
   'connect': () => {
-    const url = document.getElementById('fb-url')?.value.trim() || '';
+    const raw = document.getElementById('fb-url')?.value.trim() || '';
     const key = document.getElementById('fb-key')?.value.trim() || '';
+    // 콘솔에서 복사하면 뒤에 경로나 물음표가 붙어 오는 일이 잦다. 앞부분만 남긴다.
+    const url = raw.replace(/\/+$/, '').replace(/\/[^/]*\.json.*$/, '').split('?')[0];
+
+    if (!url) { toast('주소를 붙여넣어 주세요.'); return; }
+    if (!/^https:\/\//.test(url)) { toast('https:// 로 시작하는 주소여야 합니다.'); return; }
+    if (!/firebase(io|database)/.test(url)) {
+      toast('Realtime Database 주소가 맞는지 확인해 주세요.');
+      return;
+    }
+
     repo.updateSettings({ backend: 'FIREBASE', firebaseDb: url, apiKey: key });
     try {
       repo.provision();
@@ -517,8 +564,8 @@ const ACTIONS = {
 
   'show-code': (id) => showCode('연결 코드', repo.pairingCode(id),
     '작업자 기기에서 앱을 열고 이 코드를 붙여넣으면 끝입니다.'),
-  'backup-code': () => showCode('관리자 복구 코드', repo.managerBackupCode(),
-    '팀 저장소 접속 정보와 모든 문서 주소가 들어 있습니다. 다른 사람에게 보내지 마세요.'),
+  'backup-code': () => showCode('관리자 코드', repo.managerBackupCode(),
+    '관리자를 늘리거나 기기를 되살릴 때 씁니다. 팀 저장소 접속 정보가 들어 있으니 팀 밖으로는 보내지 마세요.'),
   'repair': () => promptModal({
     title: '연결 코드 입력', label: '연결 코드 또는 복구 코드', placeholder: 'HENNY2:...',
     confirm: '연결', onConfirm: (raw) => {
@@ -698,6 +745,10 @@ window.addEventListener('pagehide', () => repo.stopLive());
 draw();
 repo.startLive();
 publishSchedule(repo);
+
+// 예전 앱 자료를 옮겨 왔으면 알려 준다. 말없이 넘어가면 화면이 비었다가
+// 갑자기 차 있는 것으로 보여서 무슨 일이 일어난 건지 알 수 없다.
+if (restored) toast('예전 앱에 있던 자료를 그대로 가져왔습니다.');
 
 // 웹 자산이 갱신되면 바로 반영한다
 if ('serviceWorker' in navigator) {

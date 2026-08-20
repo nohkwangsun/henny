@@ -170,3 +170,29 @@ nav.tabs .ico { display: block; font-size: 19px; margin-bottom: 2px; }
   background: var(--ink); color: var(--bg); padding: 12px 18px; border-radius: 999px;
   font-size: 14px; z-index: 60; max-width: 90%; text-align: center;
 }
+
+/* 첫 설정의 차례차례 안내. 번호를 눈에 띄게 두고 보조 설명은 줄을 바꾼다. */
+.guide {
+  margin: 14px 0; padding: 0; list-style: none; counter-reset: guide;
+}
+.guide li {
+  position: relative; padding: 0 0 14px 34px; counter-increment: guide;
+  line-height: 1.5;
+}
+.guide li::before {
+  content: counter(guide);
+  position: absolute; left: 0; top: 0;
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--teal); color: #fff;
+  font-size: 13px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.guide li:last-child { padding-bottom: 0; }
+.guide .muted { display: block; font-size: 13px; margin-top: 2px; }
+.guide a { color: var(--teal); font-weight: 600; }
+
+/* 접어 둔 설명. 필요한 사람만 펼쳐 본다. */
+details summary {
+  cursor: pointer; padding: 8px 0; font-size: 14px;
+}
+details pre.code { margin: 8px 0 0; white-space: pre-wrap; }
