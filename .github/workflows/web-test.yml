@@ -12,11 +12,6 @@ on:
       - 'tools/test_core.mjs'
       - 'tools/test_flow.mjs'
       - '.github/workflows/web-test.yml'
-  pull_request:
-    paths:
-      - 'web/**'
-      - 'tools/test_core.mjs'
-      - 'tools/test_flow.mjs'
   workflow_dispatch:
 
 jobs:
