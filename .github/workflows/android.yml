@@ -31,6 +31,10 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      # 컴파일까지 가기 전에 흔한 실수부터 걸러낸다. 몇 초면 끝난다.
+      - name: Sanity check
+        run: python3 tools/sanity_check.py
+
       - name: Prepare signing key
         id: key
         env:

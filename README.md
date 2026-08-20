@@ -249,6 +249,16 @@
 - R8 축소 + 리소스 축소 적용 — 릴리스 APK 약 1MB
 - compileSdk / targetSdk 36 (Android 16), Play용 AAB와 사이드로딩용 APK를 함께 빌드
 
+빌드 전 점검:
+
+```bash
+python3 tools/sanity_check.py
+```
+
+안드로이드 SDK 없이 손보는 경우가 있어, 컴파일까지 가지 않고도 잡히는 실수 두 가지를
+미리 검사합니다 — 컴포저블의 후행 람다가 `modifier` 에 붙는 문제, 그리고 중괄호 짝이
+어긋난 파일. CI 에서도 빌드 앞단에 돌립니다.
+
 로컬 빌드:
 
 ```bash
@@ -278,6 +288,7 @@ app/src/main/java/com/henny/checklist/
 docs/                    GitHub Pages로 올리는 개인정보처리방침
 store/                   Play 스토어 등록정보용 아이콘·기능 그래픽
 tools/make_store_graphics.py   위 그래픽 생성 스크립트
+tools/sanity_check.py    빌드 전 실수 검사
 INSTALL.md               설치 방법 고르기 (사이드로딩 vs 스토어)
 PLAY_STORE.md            플레이 출시 절차
 ```

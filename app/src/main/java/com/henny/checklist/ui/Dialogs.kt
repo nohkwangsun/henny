@@ -125,8 +125,8 @@ fun TimeField(
 @Composable
 fun PointsField(
     points: Int,
-    onChange: (Int) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onChange: (Int) -> Unit
 ) {
     var text by remember { mutableStateOf(points.toString()) }
     Column(modifier.fillMaxWidth()) {

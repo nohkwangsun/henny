@@ -271,5 +271,3 @@ private fun TaskRow(task: TodayTask, accent: Color, onToggle: () -> Unit) {
         }
     }
 }
-월 ${date.dayOfMonth}일 ${names[date.dayOfWeek.value - 1]}요일"
-}
