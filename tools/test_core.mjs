@@ -54,10 +54,15 @@ ok('기본 알림 3개', repo.plan.reminders.filter((r) => r.workerId === w.id).
 // 오늘 요일에 걸리는 정기 작업 두 개
 const today = new Date();
 const dow = isoDow(today);
+const tomorrowDow = dow === 7 ? 1 : dow + 1;
 repo.addRoutine(w.id, '일일 점검표 작성', [dow], 17 * 60, 100);
 repo.addRoutine(w.id, '재고 확인', [dow], null, 200);
 // 다른 요일에만 걸리는 것은 오늘 안 나와야 한다
-repo.addRoutine(w.id, '주말 정리', [dow === 7 ? 1 : dow + 1], null, 50);
+repo.addRoutine(w.id, '주말 정리', [tomorrowDow], null, 50);
+// 마감 알림 검사용으로 내일치를 하나 더 둔다. 오늘 걸로 두면 실행 시각에 따라
+// (예: 이미 17시가 지난 뒤 돌면) 마감이 지나 알림이 걸러지고 검사가 흔들린다.
+// 내일은 언제 돌려도 항상 미래이므로 시각에 좌우되지 않는다.
+repo.addRoutine(w.id, '내일 마감 점검', [tomorrowDow], 12 * 60, 80);
 
 let tasks = repo.tasksFor(w.id, today);
 check('오늘 작업 수', tasks.length, 2);
