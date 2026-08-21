@@ -133,6 +133,8 @@ docs/                    아래 문서들
 | [docs/USAGE.md](docs/USAGE.md) | 매일 쓰는 법 — 작업, 마일리지, 통계, 관리자 여러 명 |
 | [docs/NOTIFICATIONS.md](docs/NOTIFICATIONS.md) | 알림 종류와 안 울릴 때 (삼성·샤오미) |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 구조, 자료 모델, 동기화 규칙, 설계 판단 |
+| [docs/CODE-TOUR.md](docs/CODE-TOUR.md) | 코드를 직접 뜯어볼 때 — 읽는 순서, 자료 흐름, 재설치 경계 |
+| [docs/MOBILE-BASICS.md](docs/MOBILE-BASICS.md) | 서버 개발자를 위한 모바일 기초 (생명주기, 알람, 서명, 스토어 제약) |
 | [docs/DEVELOP.md](docs/DEVELOP.md) | 빌드, 검사, 배포 파이프라인, 서명키 |
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | 자료가 사라졌을 때, 복구, 업데이트 |
 | [PLAY_STORE.md](PLAY_STORE.md) | 플레이스토어 출시 절차 |

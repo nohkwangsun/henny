@@ -2,6 +2,23 @@
  *
  * 프레임워크 없이 상태가 바뀌면 다시 그리는 방식이다. 화면 수가 적고
  * 로직이 core.js 에 모여 있어 이 정도면 충분하다.
+ *
+ * ---------------------------------------------------------------------------
+ * 그리는 방식
+ *
+ * 리액트 같은 것을 쓰지 않는다. 상태가 바뀌면 화면을 문자열로 다시 만들어
+ * innerHTML 에 넣는다. 가상 DOM 도 diff 도 없다. 화면이 몇 개 안 되고
+ * 자료도 작아서 이 방식으로 충분하다. (빌드 단계가 없어지는 것이 덤이다.
+ * 소스 그대로 GitHub Pages 에 올라가고, 그래서 배포가 파일 복사로 끝난다.)
+ *
+ * 대신 대가가 하나 있다. 다시 그리면 그 안에 있던 DOM 이 통째로 새것이 되므로
+ * 사용자가 입력하던 값과 포커스가 날아간다. 15초마다 도는 동기화가 화면 갱신을
+ * 부르기 때문에, 이걸 처리하지 않으면 타이핑 중에 글자가 사라진다.
+ * 실제로 그랬고, 아래 draw() 가 그 대책이다.
+ *
+ * 이벤트도 개별 요소에 붙이지 않는다. 다시 그리면 다 떨어지기 때문이다.
+ * 대신 컨테이너 하나에서 받아 data-act 값으로 분기한다(이벤트 위임).
+ * ACTIONS 맵이 그 라우팅 테이블이다.
  */
 import {
   Repo, BUILD, DEFAULT_POINTS, dateKey, addDays, dayName, daysText,
@@ -30,6 +47,7 @@ function accentOf(index) {
   return `var(${ACCENTS[((index % 4) + 4) % 4]})`;
 }
 
+/** 잠깐 떴다 사라지는 알림 문구. 화면 위에 겹쳐 놓고 2.6초 뒤 지운다. */
 function toast(text) {
   document.querySelectorAll('.toast').forEach((t) => t.remove());
   const el = document.createElement('div');
@@ -86,6 +104,11 @@ function pills(items, accent) {
     `<div class="pill" style="--accent:${accent}"><b>${esc(value)}</b><span>${esc(label)}</span></div>`).join('')}</div>`;
 }
 
+/**
+ * 동기화 상태 한 줄. 이게 화면에 늘 보이는 게 중요하다.
+ * 여러 기기가 각자 저장소를 읽고 쓰는 구조라, 지금 보고 있는 화면이 언제
+ * 기준인지 알 수 없으면 사용자가 "안 되는 건가?"라고 의심하게 된다.
+ */
 function syncLine() {
   const s = repo.settings;
   if (repo.syncing) return '맞추는 중…';

@@ -342,9 +342,22 @@ await check('키보드가 올라와도 저장 버튼에 닿는다', async () => 
 });
 
 await check('앱에 넘길 알람 일정이 만들어진다', async () => {
+  // 검사가 요일과 시각에 휘둘리지 않도록 입력을 직접 만든다.
+  //
+  // 기본 알림은 평일에만 걸린다. 그래서 금요일 저녁에 돌리면 3일 창이
+  // 금·토·일이 되고, 금요일 알림 시각은 이미 지나 하나도 안 남는다.
+  // 실제로 그렇게 깨졌다. 기능 문제가 아니라 검사가 벽시계에 매인 문제였다.
+  //
+  // 매일 걸리는 알림을 하나 두면 "내일"이 항상 창 안에 있으므로 언제 돌려도 같다.
   const count = await worker.evaluate(async () => {
     const m = await import('./core.js');
-    return m.computeSchedule(new m.Repo(), 3).length;
+    const repo = new m.Repo();
+    repo.upsertReminder({
+      id: 'flow-check', workerId: repo.settings.workerId,
+      minute: 9 * 60, text: '검사용 알림',
+      onlyIfIncomplete: false, days: [1, 2, 3, 4, 5, 6, 7], enabled: true,
+    });
+    return m.computeSchedule(repo, 3).length;
   });
   if (typeof count !== 'number' || count < 1) throw new Error(`일정이 비어 있다 (${count})`);
 });
