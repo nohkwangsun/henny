@@ -17,3 +17,8 @@ keystore/
 
 # 스토어 그래픽 생성용 폰트 캐시 (10MB, 커밋하지 않음)
 tools/.cache/
+
+# 검사용으로 npm install 한 것. 저장소에 넣지 않는다.
+# (한 번 실수로 들어가 19MB 를 차지했다)
+node_modules/
+package-lock.json
