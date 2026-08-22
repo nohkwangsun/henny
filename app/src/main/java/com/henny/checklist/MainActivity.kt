@@ -186,7 +186,7 @@ class MainActivity : ComponentActivity() {
          * 예전 네이티브 앱이 쓰던 파일을 읽어 웹에 넘긴다. 한 번만 쓰이고 끝나는
          * 이사용 통로다.
          *
-         * 예전 앱은 자료를 filesDir/henny/*.json 에 뒀고 지금 앱은 WebView 의
+         * 예전 앱은 자료를 filesDir 아래 henny 폴더의 json 파일들에 뒀고, 지금 앱은 WebView 의
          * localStorage 에 둔다. 저장 위치가 완전히 다른 곳이라, 앱을 덮어 설치하면
          * 파일은 그대로 있는데 새 코드가 그걸 못 봤다. 화면이 비어 보인 이유다.
          *
