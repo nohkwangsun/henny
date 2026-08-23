@@ -2,6 +2,28 @@
  *
  * 안드로이드 Repository.kt 를 그대로 옮긴 것이다. 데이터 구조와 판단 규칙이
  * 양쪽에서 같아야 기존 팀 저장소를 그대로 이어서 쓸 수 있다.
+ *
+ * ---------------------------------------------------------------------------
+ * 이 파일의 위치
+ *
+ * 서버 앱으로 치면 도메인 + 리포지토리 + 동기화 계층을 한 파일에 넣은 것이다.
+ * 화면(ui.js)은 여기 있는 Repo 를 부르기만 하고 규칙을 직접 알지 못한다.
+ *
+ * 서버와 결정적으로 다른 전제가 셋 있다.
+ *
+ * 1. 서버가 없다. 중앙에서 조정해 주는 주체가 없고, 기기들이 공용 저장소
+ *    (Firebase Realtime Database) 를 각자 읽고 쓴다. 그래서 "누가 이겼는가"를
+ *    코드가 직접 정해야 한다 (아래 mergePlans).
+ *
+ * 2. 트랜잭션이 없다. 저장소는 사실상 JSON 파일 몇 개를 HTTP 로 GET/PUT 하는
+ *    것이다. 락도, compare-and-swap 도 없다. 그래서 충돌을 막는 대신
+ *    "충돌이 나도 합쳐지는" 자료 구조를 쓴다.
+ *
+ * 3. 오프라인이 정상 상태다. 지하철에 들어가면 그냥 안 된다. 그래서 모든 쓰기는
+ *    로컬에 먼저 반영하고(localStorage), 네트워크는 나중에 맞춘다.
+ *
+ * 요약하면 마지막 쓰기 우선(LWW) + 삭제 묘비(tombstone) 를 항목 단위로 적용한
+ * 아주 단순한 CRDT 다. 규모가 가족 몇 명이라 이 정도로 충분하다.
  */
 
 export const BUILD = '__BUILD__';
@@ -57,6 +79,22 @@ export function newId(prefix) {
   return `${prefix}_${rnd}`;
 }
 
+/*
+ * localStorage 는 브라우저(여기서는 WebView)가 주는 키-값 저장소다.
+ * 서버 개발자가 오해하기 쉬운 특성 몇 가지:
+ *
+ *   - 문자열만 담는다. 그래서 넣고 뺄 때마다 JSON.stringify/parse 를 거친다.
+ *   - 동기 API 다. 읽기도 쓰기도 메인 스레드를 잠깐 막는다. 큰 자료를 자주
+ *     쓰면 화면이 버벅인다. 이 앱은 자료가 작아 문제되지 않는다.
+ *   - 용량이 오리진당 5~10MB 로 작다. 넘으면 예외가 난다(아래 save 참고).
+ *   - 격리 단위가 오리진(스킴+호스트+포트)이다. 우리 WebView 는 항상 같은
+ *     주소를 열므로 같은 저장소를 계속 쓴다.
+ *   - 앱을 지우면 같이 사라진다. 덮어 설치로는 안 사라진다. 이 차이가
+ *     "업데이트하면 자료가 없어지나?"의 답이다. (docs/CODE-TOUR.md 참고)
+ *
+ * 실질적으로 이 앱의 단일 진실 공급원은 여기가 아니라 팀 저장소다.
+ * localStorage 는 오프라인에서도 쓰기 위한 로컬 사본에 가깝다.
+ */
 // ------------------------------------------------------------------ 저장
 
 const KEYS = { settings: 'henny.settings', plan: 'henny.plan', progress: 'henny.progress.' };
@@ -74,6 +112,8 @@ function load(key, fallback) {
 }
 
 function save(key, value) {
+  // 용량이 넘치면 예외가 난다. 여기서 터뜨리면 체크 한 번에 화면 전체가 죽으므로
+  // 삼킨다. 대신 팀 저장소를 쓰고 있으면 다음 동기화 때 원격에 남는다.
   try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* 용량 초과 */ }
 }
 
@@ -140,9 +180,65 @@ export const EMPTY_PLAN = {
 };
 
 const emptyProgress = (workerId) => ({
-  schema: 1, workerId, updatedAt: 0, days: {}, archive: [],
+  schema: 2, workerId, updatedAt: 0, days: {}, archive: [], ledger: [],
 });
 
+/**
+ * 마일리지 원장.
+ *
+ * 예전에는 누적 마일리지를 "지금 남아 있는 체크 기록을 전부 다시 더해서" 냈다.
+ * 그래서 값이 기록에 딸려 흔들렸다. 150일이 지나 기록이 정리되거나, 관리자가
+ * 배점을 고치거나, 체크를 껐다 켜면 누적이 같이 움직였다. 무엇보다 모은 것을
+ * "쓰는" 방법이 없었다. 상을 주고 차감할 자리가 아예 없었기 때문이다.
+ *
+ * 이제는 적립도 차감도 하나의 사실로 원장에 남긴다. 잔액은 그 사실들의 합이다.
+ * 체크 기록을 정리해도 원장은 그대로이므로 누적이 줄지 않는다.
+ *
+ *   { id, at, delta, reason }
+ *
+ * id 는 같은 사건에 늘 같은 값이 나오게 짓는다. 작업 체크는
+ * "d:<날짜>:<작업id>" 라서 껐다 켜도 줄이 하나뿐이고, 기기 두 대가 각자
+ * 올려도 합칠 때 겹치지 않는다. 체크를 끄면 지우는 대신 delta 를 0 으로 둔다.
+ * 지우면 상대 기기의 옛 줄이 되살아나기 때문이다(계획 쪽 삭제 표시와 같은 이유).
+ */
+function ledgerId(dateKeyStr, taskId) { return `d:${dateKeyStr}:${taskId}`; }
+
+/**
+ * 원장이 없던 시절의 자료에 원장을 한 번 만들어 준다.
+ *
+ * 남아 있는 일별 기록과 월별 합계를 훑어 그때의 적립을 그대로 옮긴다. 둘은
+ * 겹치지 않으므로(정리된 것만 월별로 넘어간다) 이중으로 더해지지 않는다.
+ * 결과는 예전 방식으로 계산하던 값과 같다. 한 번 만들고 나면 다시 만들지 않는다.
+ */
+function ensureLedger(p) {
+  if (Array.isArray(p.ledger)) return p;
+  const ledger = [];
+  Object.entries(p.days || {}).forEach(([key, log]) => {
+    (log.items || []).forEach((i) => {
+      if (!i.doneAt) return;
+      ledger.push({
+        id: ledgerId(key, i.taskId), at: i.doneAt,
+        delta: i.points || 0, reason: i.title || '',
+      });
+    });
+  });
+  (p.archive || []).forEach((m) => {
+    if (!m.points) return;
+    ledger.push({ id: `arch:${m.month}`, at: 0, delta: m.points, reason: `${m.month} 합계` });
+  });
+  return { ...p, schema: 2, ledger };
+}
+
+/*
+ * 저장소 어댑터. 백엔드가 넷(NONE/FIREBASE/JSONBIN/HTTP)이지만 하는 일은 같다.
+ * "주소 하나에 JSON 한 덩어리를 GET/PUT 한다"가 전부다. DB 라기보다 키-값 버킷에
+ * 가깝고, 질의도 인덱스도 없다.
+ *
+ * supportsFieldFetch 가 중요한 최적화다. Firebase 는 문서 안의 필드 하나만
+ * 골라 읽을 수 있어서, 15초마다 updatedAt(숫자 하나)만 확인하고 값이 달라졌을
+ * 때만 전체를 받는다. 확인 한 번이 수십 바이트라 폴링이 부담되지 않는다.
+ * 그게 안 되는 백엔드는 매번 전체를 받아야 해서 주기를 60초로 늘려 잡았다.
+ */
 // ------------------------------------------------------------------ 원격
 
 class Remote {
@@ -243,7 +339,7 @@ export class Repo {
     if (this.settings.workerId) ids.add(this.settings.workerId);
     const next = {};
     ids.forEach((id) => {
-      next[id] = { ...emptyProgress(id), ...load(KEYS.progress + id, {}) };
+      next[id] = ensureLedger({ ...emptyProgress(id), ...load(KEYS.progress + id, {}) });
     });
     this.progress = next;
   }
@@ -301,17 +397,33 @@ export class Repo {
       doneAt: t.id !== taskId ? t.doneAt : (t.doneAt ? null : now),
       points: t.points,
     }));
-    this.writeDay(workerId, date, { date: dateKey(date), items, updatedAt: now });
+    const hit = items.find((i) => i.taskId === taskId);
+
+    // 기록과 원장을 한 번에 저장한다. 따로 저장하면 그사이 동기화가 끼어들어
+    // 둘이 어긋날 수 있다.
+    const cur = ensureLedger(this.progressOf(workerId));
+    const id = ledgerId(dateKey(date), taskId);
+    const rest = (cur.ledger || []).filter((e) => e.id !== id);
+    this.saveProgress(workerId, {
+      ...cur,
+      days: { ...cur.days, [dateKey(date)]: { date: dateKey(date), items, updatedAt: now } },
+      // 껐으면 0 으로 덮는다. 지우지 않는 이유는 원장 설명 참고.
+      ledger: [...rest, {
+        id, at: now,
+        delta: hit && hit.doneAt ? (hit.points || 0) : 0,
+        reason: hit ? hit.title : '',
+      }],
+    });
   }
 
   writeDay(workerId, date, log) {
-    const cur = this.progressOf(workerId);
-    const updated = this.pruned({
-      ...cur,
-      workerId,
-      updatedAt: Date.now(),
-      days: { ...cur.days, [dateKey(date)]: log },
-    });
+    const cur = ensureLedger(this.progressOf(workerId));
+    this.saveProgress(workerId, { ...cur, days: { ...cur.days, [dateKey(date)]: log } });
+  }
+
+  /** 진행 기록을 저장하는 유일한 길목. 정리·저장·알림·업로드를 함께 한다. */
+  saveProgress(workerId, next) {
+    const updated = this.pruned({ ...next, workerId, updatedAt: Date.now() });
     this.progress = { ...this.progress, [workerId]: updated };
     save(KEYS.progress + workerId, updated);
     this.emit();
@@ -384,12 +496,35 @@ export class Repo {
     return this.statFor(workerId, first, lastDay);
   }
 
+  /** 지금 잔액. 원장에 적힌 것을 모두 더한 값이다. */
   lifetimePoints(workerId) {
-    const p = this.progressOf(workerId);
-    const fromDays = Object.values(p.days || {})
-      .reduce((s, log) => s + (log.items || []).filter((i) => i.doneAt).reduce((a, i) => a + (i.points || 0), 0), 0);
-    const fromArchive = (p.archive || []).reduce((s, m) => s + (m.points || 0), 0);
-    return fromDays + fromArchive;
+    return (this.progressOf(workerId).ledger || []).reduce((s, e) => s + (e.delta || 0), 0);
+  }
+
+  /** 원장 최근 순. 설정 화면에서 내역을 보여줄 때 쓴다. */
+  ledgerOf(workerId, limit = 50) {
+    return [...(this.progressOf(workerId).ledger || [])]
+      .filter((e) => e.delta)
+      .sort((a, b) => (b.at || 0) - (a.at || 0))
+      .slice(0, limit);
+  }
+
+  /**
+   * 원장에 한 줄 남긴다. 같은 id 가 있으면 그 줄을 고친다.
+   * 체크를 껐을 때는 delta 0 으로 덮어 "적립이 없던 일이 됐다"를 남긴다.
+   */
+  postLedger(workerId, entry) {
+    const cur = ensureLedger(this.progressOf(workerId));
+    const rest = (cur.ledger || []).filter((e) => e.id !== entry.id);
+    this.saveProgress(workerId, { ...cur, ledger: [...rest, entry] });
+  }
+
+  /** 관리자가 손으로 더하거나 뺀다. 상을 주거나 모은 것을 쓸 때. */
+  adjustPoints(workerId, delta, reason) {
+    if (!delta) return;
+    this.postLedger(workerId, {
+      id: newId('adj'), at: Date.now(), delta, reason: reason || '직접 조정',
+    });
   }
 
   /** 할 일이 없던 날은 건너뛰고, 아직 진행 중인 오늘은 연속을 끊지 않는다. */
@@ -759,6 +894,13 @@ const TOMBSTONE_KEEP_MS = 90 * 24 * 60 * 60 * 1000;
  * 지웠다는 표시가 없으면 합칠 때 상대가 아직 들고 있는 항목이 되살아난다.
  * 그래서 삭제도 기록으로 남긴다. 90일이 지나면 정리한다.
  */
+/**
+ * 바뀐 항목에만 시각을 찍고, 사라진 항목은 묘비에 남긴다.
+ *
+ * 여기가 이 병합 방식의 핵심이다. 저장할 때마다 모든 항목의 updatedAt 을
+ * 갱신하면(= 흔한 실수) 손대지도 않은 항목이 전부 "방금 수정됨"이 되어
+ * 다른 관리자의 진짜 수정을 밀어낸다. 그래서 내용 비교를 먼저 한다.
+ */
 function stampPlan(prev, next, now) {
   const deleted = { ...(prev.deleted || {}), ...(next.deleted || {}) };
 
@@ -793,6 +935,23 @@ function sameItem(a, b) {
 /**
  * 계획 두 벌을 항목 단위로 합친다. 관리자가 여럿일 때 쓴다.
  * 같은 항목은 나중에 고친 쪽을, 지운 표시가 더 나중이면 삭제를 따른다.
+ *
+ * 항목 단위 LWW + 삭제 묘비. 교환법칙과 멱등성이 성립하므로 어느 쪽이 먼저
+ * 올라오든, 같은 것이 두 번 합쳐지든 결과가 같다. (test_core.mjs 가 확인한다)
+ *
+ * 문서 전체에 시각 하나만 두면 왜 안 되는가:
+ *   관리자 A 가 작업을 추가하고, 그 사이 B 가 다른 작업을 추가한 뒤 늦게 올리면
+ *   B 의 문서가 통째로 이기면서 A 가 추가한 것이 사라진다. 실제로 그랬다.
+ *
+ * 묘비가 왜 필요한가:
+ *   A 가 지운 항목을 B 는 아직 들고 있다. 항목 단위로만 합치면 "한쪽에만 있는
+ *   것"으로 보여 되살아난다. 그래서 삭제도 사실로 기록해 둔다. 다만 영원히
+ *   쌓이면 안 되므로 90일 뒤 정리한다(TOMBSTONE_KEEP_MS).
+ *   그 기간보다 오래 꺼져 있던 기기가 돌아오면 지운 항목이 되살아날 수 있는데,
+ *   가족용이라 감수한다.
+ *
+ * 진행 기록(progress)에는 이 장치가 없다. 작업자 한 명만 자기 것을 쓰기 때문에
+ * 쓰는 사람이 하나뿐이라 충돌 자체가 나지 않는다.
  */
 export function mergePlans(a, b) {
   const deleted = { ...(a.deleted || {}) };
@@ -818,7 +977,7 @@ export function mergePlans(a, b) {
   return out;
 }
 
-function mergeProgress(a, b) {
+export function mergeProgress(a, b) {
   const days = { ...a.days };
   Object.entries(b.days || {}).forEach(([k, v]) => {
     const cur = days[k];
@@ -831,12 +990,23 @@ function mergeProgress(a, b) {
       ? { month: m.month, done: Math.max(prev.done, m.done), total: Math.max(prev.total, m.total), points: Math.max(prev.points || 0, m.points || 0) }
       : { ...m };
   });
+  // 원장은 id 로 합친다. 같은 사건은 나중에 적힌 쪽을 따르고, 한쪽에만 있으면
+  // 그대로 남긴다. 문서 전체를 늦게 올린 쪽으로 덮으면 다른 기기가 그사이
+  // 적립한 줄이 사라진다.
+  const byId = {};
+  [...(a.ledger || []), ...(b.ledger || [])].forEach((e) => {
+    if (!e || !e.id) return;
+    const prev = byId[e.id];
+    if (!prev || (e.at || 0) >= (prev.at || 0)) byId[e.id] = e;
+  });
+
   return {
     ...a,
     workerId: a.workerId || b.workerId,
     updatedAt: Math.max(a.updatedAt || 0, b.updatedAt || 0),
     days,
     archive: Object.values(byMonth).sort((x, y) => x.month.localeCompare(y.month)),
+    ledger: Object.values(byId).sort((x, y) => (x.at || 0) - (y.at || 0)),
   };
 }
 
@@ -918,11 +1088,101 @@ export function computeSchedule(repo, days = 3) {
   return out.filter((e) => e.at > now).sort((a, b) => a.at - b.at);
 }
 
+/**
+ * 계산한 알림 일정을 네이티브 껍데기에 넘긴다.
+ *
+ * ***이 함수가 웹과 네이티브의 경계다.*** 여기서 넘어가는 것은
+ * [{at, title, body, tag}, ...] 뿐이고, 껍데기는 이걸 해석하지 않고
+ * 그대로 OS 알람에 건다.
+ *
+ * 그래서 알림 문구나 규칙을 아무리 바꿔도 APK 는 그대로다. 반대로 이 네 개로
+ * 표현할 수 없는 알림(버튼 달린 알림 등)을 만들려면 그때는 APK 를 고쳐야 한다.
+ *
+ * 자료가 바뀔 때마다 불린다. 껍데기가 없으면(= 그냥 브라우저로 열었으면)
+ * 조용히 넘어간다. 화면은 멀쩡히 돌아가고 알림만 안 온다.
+ */
 export function publishSchedule(repo) {
   try {
     const schedule = computeSchedule(repo);
     window.HennyShell?.setSchedule?.(JSON.stringify(schedule));
   } catch (e) { /* 브라우저에서 열었을 때는 껍데기가 없다 */ }
+}
+
+/**
+ * 네이티브 껍데기로 가는 창구. 저쪽 MainActivity.Bridge 와 짝이다.
+ *
+ * 전부 try/catch 로 감싼 이유: 이 웹앱은 세 가지 환경에서 돌아간다.
+ *   1) 앱 안의 WebView  -- HennyShell 이 있다. 알림이 온다.
+ *   2) 그냥 모바일 브라우저 -- 없다. 화면은 다 되고 알림만 안 온다.
+ *   3) 개발용 데스크톱 브라우저 -- 마찬가지.
+ * 없는 것을 불렀을 때 화면이 죽으면 안 되므로 전부 방어한다.
+ * present 로 확인해 설정 화면 안내 문구를 바꾼다.
+ *
+ * 여기 있는 목록이 곧 "APK 가 제공하는 기능 전부"다. 새 항목이 필요해지는
+ * 순간이 재설치가 필요해지는 순간이다.
+ */
+/* -------------------------------------------------------------- 앱 업데이트
+ *
+ * 껍데기(APK)는 웹과 달리 저절로 새것이 되지 않는다. 그래서 새 버전이 나와도
+ * 사용자는 알 길이 없었다. 알려면 깃허브에 들어가 빌드 목록을 봐야 했다.
+ *
+ * 이제 앱이 직접 확인해서 새것이 있을 때만 받는 링크를 띄운다. 주소를 외우거나
+ * 어딘가를 뒤질 필요가 없다.
+ *
+ * 아래 두 주소는 고정이다. 릴리스에 붙는 파일 이름을 늘 henny.apk 로 두기
+ * 때문에 버전이 올라가도 주소가 바뀌지 않는다.
+ */
+export const APK_URL = 'https://github.com/nohkwangsun/henny/releases/latest/download/henny.apk';
+const RELEASE_API = 'https://api.github.com/repos/nohkwangsun/henny/releases/latest';
+const UPDATE_KEY = 'henny.update';
+/** 확인 결과를 6시간 담아 둔다. 깃허브 API 는 로그인 없이 시간당 60번까지다. */
+const UPDATE_TTL = 6 * 60 * 60 * 1000;
+
+function versionParts(v) {
+  return String(v || '').replace(/^v/, '').split(/[.\-+]/)
+    .map((n) => parseInt(n, 10)).filter((n) => Number.isFinite(n));
+}
+
+/** a 가 b 보다 새 버전인가. 1.0.9 < 1.0.10 처럼 자리마다 숫자로 견준다. */
+export function isNewer(a, b) {
+  const x = versionParts(a);
+  const y = versionParts(b);
+  if (!x.length || !y.length) return false;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    const p = x[i] || 0;
+    const q = y[i] || 0;
+    if (p !== q) return p > q;
+  }
+  return false;
+}
+
+/**
+ * 새 앱 버전이 있으면 { latest, mine } 을, 없거나 확인 못 하면 null 을 준다.
+ *
+ * 실패는 전부 조용히 넘긴다. 인터넷이 없거나 깃허브가 느린 것 때문에 화면에
+ * 오류가 뜨면 안 된다. 업데이트 안내는 있으면 좋은 것이지 꼭 필요한 게 아니다.
+ */
+export async function checkUpdate() {
+  if (!shell.present) return null;      // 브라우저로 열었으면 설치할 앱이 없다
+  const mine = shell.version();
+  if (!mine) return null;
+
+  let latest = '';
+  let cached = null;
+  try { cached = JSON.parse(localStorage.getItem(UPDATE_KEY) || 'null'); } catch (_) {}
+  if (cached && Date.now() - (cached.at || 0) < UPDATE_TTL) {
+    latest = cached.tag || '';
+  } else {
+    try {
+      const res = await fetch(RELEASE_API, { headers: { Accept: 'application/vnd.github+json' } });
+      if (!res.ok) return null;
+      latest = (await res.json()).tag_name || '';
+      try { localStorage.setItem(UPDATE_KEY, JSON.stringify({ tag: latest, at: Date.now() })); } catch (_) {}
+    } catch (_) { return null; }
+  }
+
+  if (!latest || !isNewer(latest, mine)) return null;
+  return { latest: String(latest).replace(/^v/, ''), mine };
 }
 
 export const shell = {

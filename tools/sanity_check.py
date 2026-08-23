@@ -126,6 +126,65 @@ def check_trailing_lambda(path, text):
     return problems
 
 
+def check_comment_nesting(path, text):
+    """
+    코틀린은 블록 주석이 중첩된다. 그래서 주석 안에 "/*" 가 들어가면 안쪽 주석이
+    새로 열리고, 뒤따르는 "*/" 는 그 안쪽만 닫는다. 바깥 주석은 파일 끝까지
+    열린 채로 남아 그 아래 코드를 통째로 삼킨다.
+
+    실제로 겪었다. 주석에 "filesDir/henny/*.json" 이라고 경로를 적었더니
+    "/*" 로 읽혀 클래스의 나머지가 전부 주석이 됐고, 컴파일러는 엉뚱하게
+    "Unresolved reference" 부터 뱉었다. 원인이 주석이라는 걸 알아채기 어렵다.
+
+    XML 쪽의 "--" 금지와 같은 종류의 함정이라 여기서 함께 잡는다.
+    """
+    problems = []
+    depth = 0
+    i = 0
+    line = 1
+    opened_at = None
+    while i < len(text) - 1:
+        if text[i] == "\n":
+            line += 1
+        if text[i:i + 2] == "/*":
+            if depth == 0:
+                opened_at = line
+            else:
+                problems.append(
+                    f"{path}:{line}: 주석 안에 '/*' 가 있습니다. 코틀린은 주석이 "
+                    "중첩되므로 이 아래 코드가 전부 주석으로 먹힙니다. "
+                    "경로나 글로브를 적을 때 '/*' 가 되지 않게 풀어 쓰세요."
+                )
+            depth += 1
+            i += 2
+            continue
+        if text[i:i + 2] == "*/":
+            depth -= 1
+            i += 2
+            continue
+        i += 1
+    if depth > 0:
+        problems.append(f"{path}:{opened_at}: 블록 주석이 닫히지 않았습니다.")
+    return problems
+
+
+def check_xml_comments(path, text):
+    """
+    XML 주석 안에는 붙임표를 두 개 연달아 쓸 수 없다. AAPT2 가 리소스를 합칠 때
+    오류를 낸다. CSS 변수 이름(--bg)을 주석에 적었다가 빌드가 깨진 적이 있다.
+    """
+    problems = []
+    for m in re.finditer(r"<!--(.*?)-->", text, re.S):
+        body = m.group(1)
+        if "--" in body:
+            line = text[: m.start()].count("\n") + 1
+            problems.append(
+                f"{path}:{line}: XML 주석 안에 '--' 가 있습니다. "
+                "AAPT2 가 오류로 처리합니다. 다르게 풀어 쓰세요."
+            )
+    return problems
+
+
 def main():
     problems = []
     files = sorted(glob.glob(SRC, recursive=True))
@@ -133,6 +192,13 @@ def main():
         text = open(path, encoding="utf-8").read()
         problems += check_balance(path, text)
         problems += check_trailing_lambda(path, text)
+        problems += check_comment_nesting(path, text)
+
+    # 리소스와 매니페스트의 XML 주석도 함께 본다.
+    xml_files = sorted(glob.glob("app/src/main/**/*.xml", recursive=True))
+    for path in xml_files:
+        problems += check_xml_comments(path, open(path, encoding="utf-8").read())
+    files = files + xml_files
 
     if problems:
         print(f"문제 {len(problems)}건:")

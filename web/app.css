@@ -27,10 +27,27 @@ html, body { margin: 0; padding: 0; }
 body {
   background: var(--bg); color: var(--ink);
   font: 16px/1.5 -apple-system, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
-  padding-bottom: env(safe-area-inset-bottom);
   overscroll-behavior-y: contain;
+
+  /* 상태바·노치·제스처바 자리를 피한다.
+   *
+   * 안드로이드는 앱이 시스템 막대 뒤까지 그린다(targetSdk 35+). 그대로 두면
+   * 맨 윗줄이 시계와 겹친다. 예전에는 껍데기(MainActivity)가 밀어 줬는데,
+   * 그러면 껍데기를 새로 설치해야만 고쳐진다. 웹이 직접 피하도록 옮겼다.
+   * 이제 배포만 하면 반영된다.
+   *
+   * 껍데기가 이미 밀어 준 경우에는 이 값이 0 이라 이중으로 밀리지 않는다.
+   * (새 껍데기는 인셋을 소비해 웹에 0 으로 전달한다)
+   */
+  padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
 }
-#app { max-width: 720px; margin: 0 auto; padding: 12px 16px 96px; }
+/* 아래 여백은 탭바를 가리지 않을 만큼만. 탭바가 없는 작업자 화면에서는
+   그만큼 빈 자리가 남아 화면이 어중간하게 끝났다. */
+#app { max-width: 720px; margin: 0 auto; padding: 12px 16px 24px; }
+body.has-tabs #app { padding-bottom: 96px; }
 
 h1 { font-size: 26px; margin: 0; font-weight: 700; }
 h2 { font-size: 20px; margin: 0 0 4px; font-weight: 600; }
@@ -55,6 +72,7 @@ button:disabled { opacity: .5; cursor: default; }
 button.ghost { background: transparent; color: var(--teal); border-color: var(--line); }
 button.plain { background: transparent; color: var(--teal); border: none; padding: 8px 10px; }
 button.danger { background: transparent; color: var(--error); border: none; padding: 8px 10px; }
+button.danger.solid { background: var(--error); color: #fff; }
 button.icon {
   background: transparent; color: var(--muted); border: none;
   padding: 8px; font-size: 20px; line-height: 1; border-radius: 999px;
@@ -139,8 +157,10 @@ nav.tabs .ico { display: block; font-size: 19px; margin-bottom: 2px; }
 .chip.on { background: var(--accent); color: #fff; }
 
 .days { display: flex; gap: 6px; }
+/* 손가락 목표는 44px 아래로 내려가면 옆 요일이 눌린다. 폭은 일곱 개가
+   좁은 화면에도 들어가야 해서 남는 자리를 나눠 갖는다. */
 .days button {
-  width: 38px; height: 38px; padding: 0; border-radius: 999px;
+  flex: 1; min-width: 0; height: 44px; padding: 0; border-radius: 999px;
   background: var(--track); color: var(--muted); font-size: 14px;
 }
 .days button.on { background: var(--teal); color: #fff; }
@@ -148,17 +168,43 @@ nav.tabs .ico { display: block; font-size: 19px; margin-bottom: 2px; }
 .list-row { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-top: 1px solid var(--line); }
 .list-row:first-of-type { border-top: none; }
 
-/* 모달 */
+/* 눌러서 고칠 수 있는 줄. 예전에는 아무 표시가 없어 안내 문구를 읽어야만
+   눌러도 된다는 것을 알 수 있었다. */
+.tappable {
+  cursor: pointer; border-radius: 12px; margin: 0 -8px; padding: 8px;
+  display: flex; align-items: center; gap: 8px;
+}
+.tappable::after {
+  content: '›'; margin-left: auto; color: var(--muted);
+  font-size: 20px; line-height: 1;
+}
+.tappable:active { background: var(--track); }
+
+/* 모달
+ *
+ * 안드로이드는 키보드가 올라와도 레이아웃 뷰포트가 줄지 않는다. inset:0 으로
+ * 화면 한가운데 두면 모달이 키보드 뒤에 그대로 남아, 정작 입력칸과 저장
+ * 버튼이 가려졌다. 실제로 보이는 높이(--vvh)와 시작점(--vvtop)을 ui.js 가
+ * visualViewport 에서 재어 넘겨준다. 그 값이 없는 환경에서는 100% 로 둔다.
+ *
+ * 가운데 정렬은 margin:auto 로 한다. align-items:center 로 하면 내용이
+ * 화면보다 길 때 위쪽이 잘려 스크롤로도 닿지 못한다.
+ */
 .backdrop {
-  position: fixed; inset: 0; background: rgba(0,0,0,.45); display: grid;
-  place-items: center; padding: 16px; z-index: 50;
+  position: fixed; left: 0; right: 0;
+  top: var(--vvtop, 0px); height: var(--vvh, 100%);
+  background: rgba(0,0,0,.45); z-index: 50;
+  display: flex; padding: 16px; overflow-y: auto;
 }
 .modal {
   background: var(--surface); border-radius: 22px; padding: 20px;
-  width: 100%; max-width: 420px; max-height: 88vh; overflow: auto;
+  width: 100%; max-width: 420px; margin: auto;
 }
 .modal h3 { margin: 0 0 14px; font-size: 19px; }
-.modal .actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 18px; }
+.modal .actions { display: flex; gap: 8px; margin-top: 20px; }
+/* 손가락으로 누를 크기로 키우고, 어느 것이 주 동작인지 보이게 나눈다.
+   예전에는 저장과 취소가 똑같이 투명한 글씨라 구분이 되지 않았다. */
+.modal .actions button { flex: 1; padding: 13px 12px; }
 .code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
   word-break: break-all; background: var(--track); padding: 10px; border-radius: 10px;
@@ -166,10 +212,12 @@ nav.tabs .ico { display: block; font-size: 19px; margin-bottom: 2px; }
 }
 
 .toast {
-  position: fixed; left: 50%; transform: translateX(-50%); bottom: 84px;
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(24px + env(safe-area-inset-bottom));
   background: var(--ink); color: var(--bg); padding: 12px 18px; border-radius: 999px;
   font-size: 14px; z-index: 60; max-width: 90%; text-align: center;
 }
+body.has-tabs .toast { bottom: calc(84px + env(safe-area-inset-bottom)); }
 
 /* 첫 설정의 차례차례 안내. 번호를 눈에 띄게 두고 보조 설명은 줄을 바꾼다. */
 .guide {
@@ -196,3 +244,45 @@ details summary {
   cursor: pointer; padding: 8px 0; font-size: 14px;
 }
 details pre.code { margin: 8px 0 0; white-space: pre-wrap; }
+
+/* 감점(음수) 표시. 숫자만 다르면 못 알아채므로 색으로도 구분한다. */
+.pts.minus, .plus { }
+.pts.minus { color: var(--error) !important; }
+.plus { color: var(--teal); }
+.chip.minus { background: color-mix(in srgb, var(--error) 14%, transparent); color: var(--error); }
+.chip.minus.on { background: var(--error); color: #fff; }
+
+/* 관리자가 작업자 대신 완료를 누를 수 있는 줄 */
+.mrow { gap: 4px; }
+.mcheck {
+  flex: 1; display: flex; align-items: center; gap: 10px;
+  background: transparent; border: none; border-radius: 12px;
+  padding: 8px; margin: 0 -8px; color: inherit; font: inherit;
+  font-weight: 400; text-align: left; min-height: 44px;
+}
+.mcheck:active { background: var(--track); }
+.mcheck .dot {
+  width: 22px; height: 22px; border-radius: 999px; flex: 0 0 auto;
+  background: var(--track); display: grid; place-items: center;
+  color: #fff; font-size: 13px; font-weight: 700;
+}
+.mcheck .dot.on { background: var(--accent); }
+
+/* 마일리지 내역 */
+.ledger { max-height: 46vh; overflow-y: auto; }
+.ledger .list-row b:last-child { font-size: 15px; white-space: nowrap; }
+
+/* 새 앱 버전 안내 띠. 있을 때만 뜬다. */
+.update {
+  display: flex; align-items: center; gap: 10px;
+  background: color-mix(in srgb, var(--teal) 12%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--teal) 30%, transparent);
+  border-radius: 14px; padding: 12px 12px 12px 16px; margin: 0 0 14px;
+}
+.update b { font-size: 15px; }
+a.btn {
+  background: var(--teal); color: #fff; text-decoration: none;
+  font-weight: 700; font-size: 14px; padding: 10px 16px;
+  border-radius: 999px; white-space: nowrap; flex: 0 0 auto;
+}
+a.btn:active { opacity: .85; }

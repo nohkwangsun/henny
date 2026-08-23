@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  어두운 배색일 때의 테마.
+
+  values/themes.xml 은 밝은 배색 기준이라 상태바 글씨를 어둡게(windowLightStatusBar)
+  고정해 두었다. 어두운 배경 위에 어두운 글씨가 놓이면 시계와 배터리가 보이지 않는다.
+  여기서 밝은 글씨로 되돌린다.
+-->
+<resources>
+    <style name="Theme.Henny" parent="@android:style/Theme.DeviceDefault.NoActionBar">
+        <item name="android:windowBackground">@color/henny_background</item>
+        <item name="android:statusBarColor">@color/henny_background</item>
+        <item name="android:navigationBarColor">@color/henny_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+</resources>
