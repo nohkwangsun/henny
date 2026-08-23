@@ -23,6 +23,7 @@
 import {
   Repo, BUILD, DEFAULT_POINTS, dateKey, addDays, dayName, daysText,
   minuteToText, isoDow, newId, publishSchedule, shell, importLegacy,
+  checkUpdate, APK_URL,
 } from './core.js';
 
 // Repo 를 만들기 전에 해야 한다. Repo 는 만들어질 때 저장된 값을 읽는다.
@@ -40,6 +41,8 @@ let monthOffset = 0;
 let statsWorker = '';
 let tasksWorker = '';
 let modal = null;
+// 새 앱 버전 확인 결과. 없으면 null 이고, 그때는 아무것도 띄우지 않는다.
+let update = null;
 
 // ------------------------------------------------------------------ 도구
 
@@ -529,9 +532,17 @@ function viewSettings(isManager) {
     <div class="card"><h3>이 기기</h3>
       <p>${s.role === 'MANAGER' ? '관리자용으로 설정됨' : esc(repo.workerName(s.workerId)) + '의 기기'}</p>
       <div class="muted">웹 ${esc(BUILD)}${shell.present ? ' · 앱 ' + esc(shell.version()) : ''}</div>
-      <p class="muted" style="margin:8px 0 0">
-        앱을 새로 받아야 할 때는 <a href="install.html" target="_blank" rel="noopener">설치 페이지</a>에서
-        바로 받을 수 있습니다. 화면과 규칙은 웹에 있어서 대부분은 다시 받을 필요가 없습니다.</p>
+      ${!shell.present
+        ? '<p class="muted" style="margin:8px 0 0">브라우저로 열려 있습니다. 알림을 받으려면 앱으로 설치하세요. <a href="install.html" target="_blank" rel="noopener">설치 페이지</a></p>'
+        : update
+          ? `<div class="row" style="margin-top:10px;gap:8px">
+               <span class="grow"><b>새 버전 ${esc(update.latest)}</b>이 나왔습니다.</span>
+               <a class="btn" href="${APK_URL}">받기</a>
+             </div>
+             <p class="muted" style="margin:8px 0 0">지우지 말고 덮어 설치하세요. 기록이 그대로 남습니다.</p>`
+          : `<p class="muted" style="margin:8px 0 0">앱은 최신입니다.
+             화면과 규칙은 웹에 있어서 대부분의 변경은 다시 받을 필요가 없습니다.
+             <a href="install.html" target="_blank" rel="noopener">설치 페이지</a></p>`}
       ${broken.length ? `<p class="muted err" style="margin-top:10px">이전 저장 형식을 읽지 못해 새로 시작했습니다.
         팀 저장소를 쓰고 있으면 잠시 뒤 자료가 다시 내려옵니다.
         <button class="plain" data-act="clear-broken">알림 지우기</button></p>` : ''}
@@ -568,12 +579,35 @@ let workerSettingsOpen = false;
 let modalDirty = false;
 let bodyDirty = false;
 
+/**
+ * 새 앱이 나왔을 때 화면 맨 위에 뜨는 띠.
+ *
+ * 껍데기는 웹과 달리 저절로 새것이 되지 않는다. 그래서 여기서 알려 주지 않으면
+ * 사용자는 새 버전이 나온 줄을 모른다. 대신 있을 때만 뜨고, 닫으면 그 버전에
+ * 대해서는 다시 뜨지 않는다.
+ */
+function updateBar() {
+  if (!update) return '';
+  let seen = '';
+  try { seen = localStorage.getItem('henny.updateSeen') || ''; } catch (_) {}
+  if (seen === update.latest) return '';
+  return `<div class="update">
+    <div class="grow">
+      <b>새 버전 ${esc(update.latest)}</b>
+      <div class="muted">지금은 ${esc(update.mine)} 입니다. 지우지 말고 덮어 설치하세요.</div>
+    </div>
+    <a class="btn" href="${APK_URL}">받기</a>
+    <button class="icon" data-act="hide-update" title="나중에">✕</button>
+  </div>`;
+}
+
 function bodyHtml() {
   const s = repo.settings;
   if (!s.setupDone) return viewSetup();
-  if (s.role === 'MANAGER') return viewManager();
-  if (workerSettingsOpen) return viewSettings(false) + '<button class="plain" data-act="close-settings">← 돌아가기</button>';
-  return viewWorker();
+  const bar = updateBar();
+  if (s.role === 'MANAGER') return bar + viewManager();
+  if (workerSettingsOpen) return bar + viewSettings(false) + '<button class="plain" data-act="close-settings">← 돌아가기</button>';
+  return bar + viewWorker();
 }
 
 /** 입력 중인가. 다시 그리면 글자와 커서가 함께 날아가는 상태다. */
@@ -778,6 +812,10 @@ const ACTIONS = {
   'open-noti': () => shell.openNotificationSettings(),
   'open-alarm': () => shell.openAlarmSettings(),
   'clear-broken': () => { repo.clearBroken(); },
+  'hide-update': () => {
+    // 이 버전에 대해서만 접어 둔다. 다음 버전이 나오면 다시 뜬다.
+    try { localStorage.setItem('henny.updateSeen', update?.latest || ''); } catch (_) {}
+  },
 
   'reset': () => {
     openModal(() => modalShell('이 기기 설정 초기화',
@@ -1036,6 +1074,10 @@ window.addEventListener('pagehide', () => repo.stopLive());
 draw();
 repo.startLive();
 publishSchedule(repo);
+
+// 새 앱이 나왔는지 확인한다. 실패하면 조용히 넘어간다.
+// 화면을 먼저 그린 뒤에 하므로 첫 화면이 늦어지지 않는다.
+checkUpdate().then((found) => { if (found) { update = found; draw(); } }).catch(() => {});
 
 // 예전 앱 자료를 옮겨 왔으면 알려 준다. 말없이 넘어가면 화면이 비었다가
 // 갑자기 차 있는 것으로 보여서 무슨 일이 일어난 건지 알 수 없다.

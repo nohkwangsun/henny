@@ -427,6 +427,56 @@ await check('감점 작업을 만들 수 있다', async () => {
   if (!(await html(manager)).includes('지각')) throw new Error('감점 작업이 저장되지 않았다');
 });
 
+await check('새 앱 버전이 있으면 받는 링크가 화면에 뜬다', async () => {
+  // 껍데기가 있는 척하고(HennyShell), 깃허브가 더 새 버전을 준다고 가로챈다.
+  const dev = await browser.newContext({ viewport: { width: 412, height: 915 } });
+  await dev.route(FAKE_DB + '/**', serveDb);
+  await dev.route('https://api.github.com/**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ tag_name: 'v1.0.99' }) }));
+  await dev.addInitScript(() => {
+    window.HennyShell = {
+      version: () => '1.0.41',
+      canNotify: () => true,
+      setSchedule: () => {},
+      legacyData: () => '',
+    };
+  });
+  const pg = await dev.newPage();
+  await pg.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
+  await pg.click('[data-act="go-code"]');
+  await pg.fill('#code-input', code);
+  await pg.click('[data-act="apply-code"]');
+  await pg.waitForTimeout(1800);
+
+  const h = await pg.content();
+  if (!h.includes('새 버전 1.0.99')) throw new Error('새 버전 안내가 안 떴다');
+  if (!h.includes('releases/latest/download/henny.apk')) throw new Error('받는 링크가 없다');
+
+  // 닫으면 그 버전에 대해서는 다시 뜨지 않는다
+  await pg.click('[data-act="hide-update"]');
+  await pg.waitForTimeout(400);
+  if ((await pg.content()).includes('새 버전 1.0.99')) throw new Error('닫아도 그대로 있다');
+  await dev.close();
+});
+
+await check('최신이면 아무것도 안 뜬다', async () => {
+  const dev = await browser.newContext({ viewport: { width: 412, height: 915 } });
+  await dev.route(FAKE_DB + '/**', serveDb);
+  await dev.route('https://api.github.com/**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ tag_name: 'v1.0.41' }) }));
+  await dev.addInitScript(() => {
+    window.HennyShell = { version: () => '1.0.41', canNotify: () => true,
+      setSchedule: () => {}, legacyData: () => '' };
+  });
+  const pg = await dev.newPage();
+  await pg.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
+  await pg.waitForTimeout(1200);
+  if ((await pg.content()).includes('새 버전')) throw new Error('최신인데 안내가 떴다');
+  await dev.close();
+});
+
 await check('앱에 넘길 알람 일정이 만들어진다', async () => {
   // 검사가 요일과 시각에 휘둘리지 않도록 입력을 직접 만든다.
   //

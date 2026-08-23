@@ -1121,6 +1121,70 @@ export function publishSchedule(repo) {
  * 여기 있는 목록이 곧 "APK 가 제공하는 기능 전부"다. 새 항목이 필요해지는
  * 순간이 재설치가 필요해지는 순간이다.
  */
+/* -------------------------------------------------------------- 앱 업데이트
+ *
+ * 껍데기(APK)는 웹과 달리 저절로 새것이 되지 않는다. 그래서 새 버전이 나와도
+ * 사용자는 알 길이 없었다. 알려면 깃허브에 들어가 빌드 목록을 봐야 했다.
+ *
+ * 이제 앱이 직접 확인해서 새것이 있을 때만 받는 링크를 띄운다. 주소를 외우거나
+ * 어딘가를 뒤질 필요가 없다.
+ *
+ * 아래 두 주소는 고정이다. 릴리스에 붙는 파일 이름을 늘 henny.apk 로 두기
+ * 때문에 버전이 올라가도 주소가 바뀌지 않는다.
+ */
+export const APK_URL = 'https://github.com/nohkwangsun/henny/releases/latest/download/henny.apk';
+const RELEASE_API = 'https://api.github.com/repos/nohkwangsun/henny/releases/latest';
+const UPDATE_KEY = 'henny.update';
+/** 확인 결과를 6시간 담아 둔다. 깃허브 API 는 로그인 없이 시간당 60번까지다. */
+const UPDATE_TTL = 6 * 60 * 60 * 1000;
+
+function versionParts(v) {
+  return String(v || '').replace(/^v/, '').split(/[.\-+]/)
+    .map((n) => parseInt(n, 10)).filter((n) => Number.isFinite(n));
+}
+
+/** a 가 b 보다 새 버전인가. 1.0.9 < 1.0.10 처럼 자리마다 숫자로 견준다. */
+export function isNewer(a, b) {
+  const x = versionParts(a);
+  const y = versionParts(b);
+  if (!x.length || !y.length) return false;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    const p = x[i] || 0;
+    const q = y[i] || 0;
+    if (p !== q) return p > q;
+  }
+  return false;
+}
+
+/**
+ * 새 앱 버전이 있으면 { latest, mine } 을, 없거나 확인 못 하면 null 을 준다.
+ *
+ * 실패는 전부 조용히 넘긴다. 인터넷이 없거나 깃허브가 느린 것 때문에 화면에
+ * 오류가 뜨면 안 된다. 업데이트 안내는 있으면 좋은 것이지 꼭 필요한 게 아니다.
+ */
+export async function checkUpdate() {
+  if (!shell.present) return null;      // 브라우저로 열었으면 설치할 앱이 없다
+  const mine = shell.version();
+  if (!mine) return null;
+
+  let latest = '';
+  let cached = null;
+  try { cached = JSON.parse(localStorage.getItem(UPDATE_KEY) || 'null'); } catch (_) {}
+  if (cached && Date.now() - (cached.at || 0) < UPDATE_TTL) {
+    latest = cached.tag || '';
+  } else {
+    try {
+      const res = await fetch(RELEASE_API, { headers: { Accept: 'application/vnd.github+json' } });
+      if (!res.ok) return null;
+      latest = (await res.json()).tag_name || '';
+      try { localStorage.setItem(UPDATE_KEY, JSON.stringify({ tag: latest, at: Date.now() })); } catch (_) {}
+    } catch (_) { return null; }
+  }
+
+  if (!latest || !isNewer(latest, mine)) return null;
+  return { latest: String(latest).replace(/^v/, ''), mine };
+}
+
 export const shell = {
   get present() { return typeof window !== 'undefined' && !!window.HennyShell; },
   version() { try { return window.HennyShell?.version?.() || ''; } catch (e) { return ''; } },

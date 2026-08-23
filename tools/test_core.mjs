@@ -22,7 +22,7 @@ globalThis.localStorage = new Proxy(globalThis.localStorage, {
 globalThis.window = { HennyShell: null };
 
 const { Repo, dateKey, addDays, computeSchedule, minuteToText, daysText, isoDow, DEFAULT_POINTS,
-  mergePlans, importLegacy, mergeProgress } = await import('../web/core.js');
+  mergePlans, importLegacy, mergeProgress, isNewer } = await import('../web/core.js');
 
 let pass = 0;
 const fails = [];
@@ -196,6 +196,17 @@ check('복구 후에도 경로 유지', repo3.settings.planBin, planBin1);
   r.deleteRoutine(id);
   ok('지우면 표시가 남는다', Boolean(r.plan.deleted[id]));
 }
+
+// --- 앱 버전 비교
+// 자리마다 숫자로 견줘야 한다. 문자열로 비교하면 "1.0.9" > "1.0.10" 이 되어
+// 새 버전이 나와도 안내가 안 뜬다.
+ok('새 버전을 알아본다', isNewer('v1.0.45', '1.0.41'));
+ok('같으면 새것이 아니다', !isNewer('v1.0.41', '1.0.41'));
+ok('두 자리 수를 제대로 견준다', isNewer('v1.0.10', '1.0.9'));
+ok('거꾸로도 맞다', !isNewer('v1.0.9', '1.0.10'));
+ok('가운데 자리도 본다', isNewer('v1.1.0', '1.0.99'));
+ok('디버그 접미사가 붙어도 읽는다', isNewer('v1.0.42', '1.0.41-debug'));
+ok('값이 없으면 안내하지 않는다', !isNewer('', '1.0.1'));
 
 // --- 마일리지 원장
 {
