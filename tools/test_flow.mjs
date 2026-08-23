@@ -681,9 +681,10 @@ await check('받기 통로가 없는 옛 껍데기에서는 주소를 띄운다'
   await dev.close();
 });
 
-await check('진행 링의 글씨가 링 위로 올라타지 않는다', async () => {
+await check('진행 링의 글씨가 자릿수가 늘어도 읽힌다', async () => {
   // 작은 링에서 글씨가 가운데 흰 자리를 넘어 청록 선에 겹쳐 안 읽혔다.
-  // 눈으로만 보면 또 놓치므로, 글씨 상자가 흰 원 안에 들어가는지 좌표로 잰다.
+  // 고친 뒤에도 자릿수가 늘면 글씨가 계속 줄어 12px 까지 내려갔다.
+  // 들어가는지(겹침)와 읽히는지(크기)를 둘 다 좌표로 잰다.
   const dev = await browser.newContext({ viewport: { width: 412, height: 915 } });
   await dev.route(FAKE_DB + '/**', serveDb);
   const pg = await dev.newPage();
@@ -694,24 +695,31 @@ await check('진행 링의 글씨가 링 위로 올라타지 않는다', async (
     const host = document.createElement('div');
     document.body.appendChild(host);
     const out = [];
-    // 실제로 쓰는 두 크기와, 글자가 가장 많이 늘어나는 경우까지 본다.
-    const cases = [[1, 1, 86], [0, 1, 86], [10, 12, 86], [1, 1, 132], [10, 12, 132], [0, 0, 86]];
+    // 실제로 쓰는 두 크기를, 한 자리부터 세 자리까지.
+    const cases = [];
+    for (const size of [86, 132]) {
+      for (const [d, t] of [[0, 0], [0, 1], [1, 1], [9, 9], [10, 12], [99, 99], [100, 120], [999, 999]]) {
+        cases.push([d, t, size]);
+      }
+    }
     for (const [done, total, size] of cases) {
       host.innerHTML = m.ring(done, total, '#0f6f60', size);
       const box = host.querySelector('.ring').getBoundingClientRect();
-      const txt = host.querySelector('.inner').getBoundingClientRect();
+      const el = host.querySelector('.inner');
+      const txt = el.getBoundingClientRect();
       const w = Math.max(7, Math.round(size * 0.1));
       const inner = (size - 2 * w) / 2;          // 흰 자리의 반지름
       const cx = box.left + box.width / 2;
       const cy = box.top + box.height / 2;
+      const tag = `${done}/${total} @${size}px`;
       // 글씨 상자 네 모서리가 모두 흰 원 안에 있어야 한다.
       for (const [x, y] of [[txt.left, txt.top], [txt.right, txt.top],
                             [txt.left, txt.bottom], [txt.right, txt.bottom]]) {
-        if (Math.hypot(x - cx, y - cy) > inner) {
-          out.push(`${done}/${total} @${size}px 글씨가 흰 자리를 넘었다`);
-          break;
-        }
+        if (Math.hypot(x - cx, y - cy) > inner) { out.push(tag + ' 글씨가 흰 자리를 넘었다'); break; }
       }
+      // 들어가기만 하고 안 읽히면 고친 것이 아니다.
+      const fs = parseFloat(getComputedStyle(el).fontSize);
+      if (fs < 14) out.push(`${tag} 글씨가 ${fs}px 로 너무 작다`);
     }
     host.remove();
     return out;

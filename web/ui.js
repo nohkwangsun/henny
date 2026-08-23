@@ -83,11 +83,21 @@ export function ring(done, total, accent, size = 132) {
   const r = (size - w) / 2;
   const c = 2 * Math.PI * r;
   const ratio = total === 0 ? 0 : done / total;
-  const label = total === 0 ? '없음' : `${done} / ${total}`;
-  // 가운데 흰 자리의 지름에서, 글씨가 놓이는 높이만큼 좁아지는 것을 감안한
-  // 실폭(0.86)을 잡고 글자 수로 나눈다. 0.55em 은 굵은 숫자의 평균 폭이다.
-  const fit = ((size - 2 * w) * 0.86) / (label.length * 0.55);
-  const fs = Math.max(12, Math.min(Math.round(size * 0.26), Math.round(fit)));
+  // 들어갈 자리에서 글자 수로 크기를 정한다. 0.55em 은 굵은 숫자의 평균 폭,
+  // 0.86 은 원 안에서 글씨 높이만큼 좁아지는 것을 감안한 실폭이다.
+  // 둘 다 넉넉하게 잡았다. 넘치는 것보다 조금 작은 편이 낫다.
+  const room = (size - 2 * w) * 0.86;
+  const at = (t) => Math.min(Math.round(size * 0.26), Math.round(room / (t.length * 0.55)));
+  const MIN = 14;   // 이보다 작아지면 들어가기는 해도 읽히지 않는다
+  let label = total === 0 ? '없음' : `${done} / ${total}`;
+  let fs = at(label);
+  // 두 자리까지는 그대로 들어간다. 세 자리가 되면 12px 까지 줄어 안 읽혔다.
+  // 그때는 슬래시 옆 공백을 버려 자리를 만든다. 더 줄이는 것보다 낫다.
+  if (fs < MIN && total !== 0) {
+    label = `${done}/${total}`;
+    fs = at(label);
+  }
+  fs = Math.max(11, fs);
   return `
     <div class="ring" style="width:${size}px;height:${size}px">
       <svg width="${size}" height="${size}">
