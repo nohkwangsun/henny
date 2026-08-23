@@ -127,7 +127,7 @@ function insetLine() {
   const css = getComputedStyle(document.body).paddingTop;
   const shellSays = shell.insets();
   const from = shellSays ? `껍데기 ${shellSays.top}px` : '껍데기가 안 알려줌(옛 버전)';
-  return `<div class="muted" style="margin-top:4px">화면 위 여백 ${esc(css)} · ${esc(from)}</div>`;
+  return `<div class="hint">화면 위 여백 ${esc(css)} · ${esc(from)}</div>`;
 }
 
 /**
@@ -205,13 +205,17 @@ function viewSetup() {
   let body = '';
 
   if (setupStep === 'ROLE') {
-    body = `<div class="card"><h3>시작하기</h3>
-      <div class="stack">
+    body = `<div class="card">
+      <h3>시작하기</h3>
+      <div class="choice">
         <button class="wide" data-act="role-manager">팀을 새로 만들래요</button>
-        <p class="muted" style="margin:-4px 0 8px">작업자를 등록하고 할 일을 정합니다.</p>
+        <p class="hint">작업자를 등록하고 할 일을 정합니다.</p>
+      </div>
+      <div class="choice">
         <button class="wide ghost" data-act="go-code">코드를 받았어요</button>
-        <p class="muted" style="margin:-4px 0 0">작업자 연결, 관리자 추가, 기기 복구 모두 이 쪽입니다.</p>
-      </div></div>`;
+        <p class="hint">작업자 연결, 관리자 추가, 기기 복구 모두 이 쪽입니다.</p>
+      </div>
+    </div>`;
   } else if (setupStep === 'WORKERS') {
     body = `<div class="card"><h3>작업자를 등록해 주세요</h3>
       ${repo.plan.workers.length === 0
@@ -281,13 +285,14 @@ function viewSetup() {
       </div></div>`;
   }
 
-  return `<div style="padding-top:24px">
-    <h1>헨니 체크</h1>
-    <p class="muted">오늘 할 작업을 한눈에.</p>
-    <div style="height:16px"></div>
+  return `<div>
+    <div class="page-head">
+      <h1>헨니 체크</h1>
+      <p class="muted">오늘 할 작업을 한눈에.</p>
+    </div>
     ${body}
     ${setupStep !== 'ROLE' ? '<button class="plain" data-act="setup-back">← 뒤로</button>' : ''}
-    <div class="muted center" style="margin-top:28px;font-size:12px">${esc(versionText())}</div>
+    <div class="muted center version">${esc(versionText())}</div>
   </div>`;
 }
 
@@ -351,9 +356,7 @@ function viewWorker() {
 
     <details class="card" style="--accent:${accent}">
       <summary>이번 주 자세히</summary>
-      <div style="height:12px"></div>
       ${bars(week.perDay, accent)}
-      <div style="height:12px"></div>
       <div class="muted center">달성률 ${week.rate}%</div>
     </details>`;
 }
@@ -385,7 +388,6 @@ function viewManagerToday() {
           </div>
           ${tasks.length ? ring(done.length, tasks.length, accent, 76) : ''}
         </div>
-        <div style="height:10px"></div>
         ${tasks.map((t) => `<div class="row mrow" style="padding:2px 0">
           <button class="mcheck" data-act="mgr-toggle" data-id="${w.id}:${t.id}"
                   title="${t.doneAt ? '완료 해제' : '완료로 표시'}">
@@ -397,7 +399,6 @@ function viewManagerToday() {
           </button>
           ${t.isAssignment ? `<button class="icon" data-act="del-assignment" data-id="${t.id}" title="배정 취소">✕</button>` : ''}
         </div>`).join('')}
-        <div style="height:8px"></div>
         <div class="row" style="gap:8px">
           <button class="ghost grow" data-act="assign" data-id="${w.id}">＋ 임시 작업</button>
           <button class="ghost grow" data-act="give-points" data-id="${w.id}">마일리지</button>
@@ -457,24 +458,24 @@ function viewManagerStats() {
   const archived = (repo.progressOf(statsWorker).archive || [])
     .find((m) => m.month === `${monthAnchor.getFullYear()}-${String(monthAnchor.getMonth() + 1).padStart(2, '0')}`);
 
-  return `<h1>통계</h1><div style="height:12px"></div>
+  return `<h1>통계</h1>
     ${workerChips(statsWorker, 'pick-stats')}
 
     <div class="card" style="--accent:${accent}">
       ${periodHead(weekLabel, 'week-move', weekOffset < 0)}
       ${tooOld ? '<p class="muted">150일이 지난 기록은 일별로 남기지 않습니다. 아래 월별 합계로 보세요.</p>' : ''}
-      ${bars(week.perDay, accent)}<div style="height:14px"></div>
+      ${bars(week.perDay, accent)}
       ${pills([['달성률', week.rate + '%'], ['마일리지', week.points + 'P'], ['완벽한 날', week.perfectDays + '일']], accent)}
     </div>
 
     <div class="card" style="--accent:${accent}">
       ${periodHead(monthLabel, 'month-move', monthOffset < 0)}
-      ${dots(month.perDay, accent)}<div style="height:14px"></div>
+      ${dots(month.perDay, accent)}
       ${pills([['달성률', month.rate + '%'], ['마일리지', month.points + 'P'], ['완벽한 날', month.perfectDays + '일']], accent)}
       ${archived && month.total === 0
-        ? `<div class="muted" style="margin-top:10px">정리된 달입니다. 합계로만 남아 있습니다 —
+        ? `<div class="hint">정리된 달입니다. 합계로만 남아 있습니다 —
            ${archived.total}개 중 ${archived.done}개 완료 · ${archived.points}P</div>`
-        : `<div class="muted" style="margin-top:10px">전체 ${month.total}개 중 ${month.done}개 완료</div>`}
+        : `<div class="hint">전체 ${month.total}개 중 ${month.done}개 완료</div>`}
     </div>
 
     <div class="card" style="--accent:${accent}">
@@ -495,7 +496,7 @@ function viewManagerTasks() {
   if (!tasksWorker) return '<h1>작업 관리</h1><div class="card">작업자를 먼저 추가하세요.</div>';
   const routines = repo.plan.routines.filter((r) => r.workerId === tasksWorker).sort((a, b) => (a.order || 0) - (b.order || 0));
   const reminders = repo.plan.reminders.filter((r) => r.workerId === tasksWorker).sort((a, b) => a.minute - b.minute);
-  return `<h1>작업 관리</h1><div style="height:12px"></div>
+  return `<h1>작업 관리</h1>
     ${workerChips(tasksWorker, 'pick-tasks')}
     <div class="card"><h3>정기 작업</h3>
       ${routines.length === 0 ? '<p class="muted">아직 없습니다. 아래에서 추가하세요.</p>' : ''}
@@ -504,7 +505,6 @@ function viewManagerTasks() {
           <div class="muted">${r.points ?? DEFAULT_POINTS}P · ${daysText(r.days || [])}${r.dueMinute != null ? ' · ' + minuteToText(r.dueMinute) + '까지' : ''}${r.active === false ? ' · 쉼' : ''}</div></div>
         <button class="plain" data-act="edit-routine" data-id="${r.id}">수정</button>
       </div>`).join('')}
-      <div style="height:8px"></div>
       <button class="ghost" data-act="add-routine">＋ 작업 추가</button>
     </div>
     <div class="card"><h3>점검 알림</h3>
@@ -516,7 +516,6 @@ function viewManagerTasks() {
         <button class="plain" data-act="toggle-reminder" data-id="${r.id}">${r.enabled === false ? '켜기' : '끄기'}</button>
         <button class="danger" data-act="del-reminder" data-id="${r.id}">삭제</button>
       </div>`).join('')}
-      <div style="height:8px"></div>
       <button class="ghost" data-act="add-reminder">＋ 알림 추가</button>
     </div>`;
 }
@@ -524,7 +523,7 @@ function viewManagerTasks() {
 function viewSettings(isManager) {
   const s = repo.settings;
   const broken = repo.brokenKeys();
-  return `<h1>설정</h1><div style="height:12px"></div>
+  return `<h1>설정</h1>
     <div class="card"><h3>알림</h3>
       ${shell.present
         ? `<p class="muted">${shell.canNotify() ? '알림이 켜져 있습니다.' : '<span class="err">알림이 꺼져 있어 아무것도 울리지 않습니다.</span>'}</p>
@@ -546,7 +545,6 @@ function viewSettings(isManager) {
         <button class="plain" data-act="show-code" data-id="${w.id}">연결 코드</button>
         <button class="danger" data-act="del-worker" data-id="${w.id}">삭제</button>
       </div>`).join('')}
-      <div style="height:8px"></div>
       <button class="ghost" data-act="add-worker">작업자 추가</button>
     </div>` : ''}
 
@@ -569,7 +567,6 @@ function viewSettings(isManager) {
         </div>` : ''}`
         : `<p>${s.backend === 'NONE' ? '이 기기에서만 사용 중' : '관리자 기기와 연결되어 있습니다.'}</p>
            <button class="ghost" data-act="repair">연결 코드 다시 입력</button>`}
-      <div style="height:12px"></div>
       <button data-act="sync">지금 동기화</button>
       ${s.lastSyncError ? `<div class="muted err" style="margin-top:8px">${esc(s.lastSyncError)}</div>` : ''}
     </div>
@@ -579,14 +576,14 @@ function viewSettings(isManager) {
       <div class="muted">${esc(versionText())}</div>
       ${insetLine()}
       ${!shell.present
-        ? '<p class="muted" style="margin:8px 0 0">브라우저로 열려 있습니다. 알림을 받으려면 앱으로 설치하세요. <a href="install.html" target="_blank" rel="noopener">설치 페이지</a></p>'
+        ? '<p class="hint">브라우저로 열려 있습니다. 알림을 받으려면 앱으로 설치하세요. <a href="install.html" target="_blank" rel="noopener">설치 페이지</a></p>'
         : update
           ? `<div class="row" style="margin-top:10px;gap:8px">
                <span class="grow"><b>새 버전 ${esc(update.latest)}</b>이 나왔습니다.</span>
                <a class="btn" href="${APK_URL}">받기</a>
              </div>
-             <p class="muted" style="margin:8px 0 0">지우지 말고 덮어 설치하세요. 기록이 그대로 남습니다.</p>`
-          : `<p class="muted" style="margin:8px 0 0">앱은 최신입니다.
+             <p class="hint">지우지 말고 덮어 설치하세요. 기록이 그대로 남습니다.</p>`
+          : `<p class="hint">앱은 최신입니다.
              화면과 규칙은 웹에 있어서 대부분의 변경은 다시 받을 필요가 없습니다.
              <a href="install.html" target="_blank" rel="noopener">설치 페이지</a></p>`}
       ${broken.length ? `<p class="muted err" style="margin-top:10px">이전 저장 형식을 읽지 못해 새로 시작했습니다.
@@ -603,7 +600,7 @@ function viewSettings(isManager) {
            바로 아래에서 전부 지우는 버튼을 보는 일이 없게. -->
       <details style="margin-top:14px">
         <summary class="muted">고급 — 되돌릴 수 없는 작업</summary>
-        <p class="muted" style="margin:10px 0 0">
+        <p class="hint">
           초기화는 이 기기의 연결만 지웁니다. 팀 저장소의 자료는 그대로입니다.
           모든 데이터 지우기는 팀 저장소까지 비웁니다.</p>
         <div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap">

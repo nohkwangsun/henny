@@ -25,6 +25,15 @@
   --r-sm: 12px;
   --r-md: 18px;
   --r-pill: 999px;
+
+  /* 간격도 눈금으로 고정한다. 예전에는 빈 div 로 높이를 채우고, 인라인
+     margin 을 붙이고, .stack 규칙을 쓰고, p 의 브라우저 기본값까지 겹쳐
+     네 가지가 서로 싸웠다. 그래서 화면마다 간격이 달랐다. */
+  --s1: 6px;
+  --s2: 10px;
+  --s3: 14px;
+  --s4: 20px;
+  --s5: 28px;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -70,20 +79,34 @@ body {
 #app { max-width: 720px; margin: 0 auto; padding: 12px 16px 24px; }
 body.has-tabs #app { padding-bottom: 96px; }
 
-h1 { font-size: 26px; margin: 0; font-weight: 700; }
-h2 { font-size: 20px; margin: 0 0 4px; font-weight: 600; }
+h1 { font-size: 26px; margin: 0; font-weight: 700; letter-spacing: -.01em; }
+h2 { font-size: 20px; margin: 0; font-weight: 600; }
+h3 { margin: 0; }
+p  { margin: 0; }
+ol, ul { margin: 0; }
+
+/* 화면 맨 위 제목 묶음 */
+.page-head { display: flex; flex-direction: column; gap: 4px; margin-bottom: var(--s4); }
 .muted { color: var(--muted); font-size: 13px; }
 .err { color: var(--error); }
 .row { display: flex; align-items: center; gap: 10px; }
 .grow { flex: 1; min-width: 0; }
 .spread { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.stack > * + * { margin-top: 10px; }
+.stack { display: flex; flex-direction: column; gap: var(--s2); }
 .center { text-align: center; }
 
 .card {
-  background: var(--surface); border-radius: var(--r-md); padding: 16px; margin: 12px 0;
+  background: var(--surface); border-radius: var(--r-md); padding: 16px;
+  margin: var(--s3) 0;
+  /* 카드 안의 간격은 여기 하나로 정한다. 안쪽 요소가 각자 margin 을 갖지 않는다. */
+  display: flex; flex-direction: column; gap: var(--s3);
 }
-.card h3 { margin: 0 0 10px; font-size: 17px; font-weight: 600; }
+.card > h3 { font-size: 17px; font-weight: 600; }
+
+/* 버튼과 그 설명은 한 덩어리로 붙여 둔다. 사이가 넓으면 어느 버튼의
+   설명인지 헷갈린다. */
+.choice { display: flex; flex-direction: column; gap: var(--s1); }
+.hint { font-size: 13px; color: var(--muted); line-height: 1.5; }
 
 button {
   font: inherit; cursor: pointer; border-radius: var(--r-pill); border: 1px solid transparent;
@@ -334,3 +357,4 @@ details.card > summary {
 details.card > summary::-webkit-details-marker { display: none; }
 details.card > summary::after { content: '⌄'; color: var(--muted); font-size: 18px; }
 details.card[open] > summary::after { content: '⌃'; }
+.version { font-size: 12px; margin-top: var(--s5); }
