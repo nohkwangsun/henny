@@ -57,8 +57,12 @@ jobs:
       - name: Assemble site
         run: |
           # 서비스 워커가 캐시를 갈아치우는 기준이자, 화면에 표시할 버전이다.
-          stamp="$(date -u +%Y%m%d-%H%M)-${GITHUB_SHA::7}"
-          sed -i "s/__BUILD__/${stamp}/g" web/sw.js web/index.html web/core.js
+          # 초까지 넣는다. 화면에 그대로 띄워 "지금 보는 것이 언제 배포된 것인지"를
+          # 사용자가 바로 확인할 수 있어야 한다.
+          stamp="$(date -u +%Y%m%d-%H%M%S)"
+          # ui.js 도 반드시 넣어야 한다. 여기서 core.js 를 부르는 주소에 버전이
+          # 붙는데, 빠뜨리면 로직이 담긴 core.js 가 캐시에 걸린 채로 남는다.
+          sed -i "s/__BUILD__/${stamp}/g" web/sw.js web/index.html web/core.js web/ui.js
           # Pages 소스가 하나뿐이라 개인정보처리방침도 같은 사이트에 실어야
           # 기존 주소(.../privacy.html)가 그대로 살아 있다.
           cp docs/privacy.html web/privacy.html

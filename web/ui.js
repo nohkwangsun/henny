@@ -24,7 +24,7 @@ import {
   Repo, BUILD, DEFAULT_POINTS, dateKey, addDays, dayName, daysText,
   minuteToText, isoDow, newId, publishSchedule, shell, importLegacy,
   checkUpdate, APK_URL,
-} from './core.js';
+} from './core.js?v=__BUILD__';
 
 // Repo 를 만들기 전에 해야 한다. Repo 는 만들어질 때 저장된 값을 읽는다.
 const restored = importLegacy();
@@ -128,6 +128,24 @@ function insetLine() {
   const shellSays = shell.insets();
   const from = shellSays ? `껍데기 ${shellSays.top}px` : '껍데기가 안 알려줌(옛 버전)';
   return `<div class="muted" style="margin-top:4px">화면 위 여백 ${esc(css)} · ${esc(from)}</div>`;
+}
+
+/**
+ * 앱과 웹의 버전을 한 줄로.
+ *
+ *   앱 v1.0.48 · 웹 20260823-093210
+ *
+ * 앱은 APK 의 versionName(세 자리), 웹은 배포한 시각이다. 둘이 따로 움직이는
+ * 구조라 한쪽만 봐서는 지금 무엇이 도는지 알 수 없다.
+ *
+ * 이걸 안 보이게 두었다가 크게 헤맸다. 고쳐서 배포해 놓고 "앱만 다시 열면
+ * 됩니다"라고 안내했는데 정작 화면은 예전 것이었고, 양쪽 다 확인할 방법이
+ * 없어 몇 번을 헛돌았다. 그래서 첫 설정 화면에도 띄운다. 설정 탭까지
+ * 들어가지 못하는 상태에서도 보여야 하기 때문이다.
+ */
+function versionText() {
+  const web = BUILD.includes('__') ? '개발중' : BUILD;
+  return shell.present ? `앱 v${shell.version() || '?'} · 웹 ${web}` : `웹 ${web} (브라우저)`;
 }
 
 function syncLine() {
@@ -269,6 +287,7 @@ function viewSetup() {
     <div style="height:16px"></div>
     ${body}
     ${setupStep !== 'ROLE' ? '<button class="plain" data-act="setup-back">← 뒤로</button>' : ''}
+    <div class="muted center" style="margin-top:28px;font-size:12px">${esc(versionText())}</div>
   </div>`;
 }
 
@@ -557,7 +576,7 @@ function viewSettings(isManager) {
 
     <div class="card"><h3>이 기기</h3>
       <p>${s.role === 'MANAGER' ? '관리자용으로 설정됨' : esc(repo.workerName(s.workerId)) + '의 기기'}</p>
-      <div class="muted">웹 ${esc(BUILD)}${shell.present ? ' · 앱 ' + esc(shell.version()) : ''}</div>
+      <div class="muted">${esc(versionText())}</div>
       ${insetLine()}
       ${!shell.present
         ? '<p class="muted" style="margin:8px 0 0">브라우저로 열려 있습니다. 알림을 받으려면 앱으로 설치하세요. <a href="install.html" target="_blank" rel="noopener">설치 페이지</a></p>'

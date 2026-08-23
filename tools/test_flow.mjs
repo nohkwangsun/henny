@@ -596,6 +596,33 @@ await check('새 배포가 있으면 앱이 스스로 새로 읽는다', async (
   await dev.close();
 });
 
+await check('첫 화면에도 버전이 보인다', async () => {
+  // 설정 탭까지 못 들어가는 상태에서도 무엇이 도는지 알 수 있어야 한다.
+  const dev = await browser.newContext({ viewport: { width: 412, height: 915 } });
+  await dev.route(FAKE_DB + '/**', serveDb);
+  await dev.addInitScript(() => {
+    window.HennyShell = { version: () => '1.0.48', canNotify: () => true,
+      setSchedule: () => {}, legacyData: () => '' };
+  });
+  const pg = await dev.newPage();
+  await pg.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
+  await pg.waitForTimeout(300);
+  const h = await pg.content();
+  if (!h.includes('앱 v1.0.48')) throw new Error('앱 버전이 안 보인다');
+  if (!h.includes('웹 flow-test')) throw new Error('웹 버전이 안 보인다');
+  await dev.close();
+});
+
+await check('로직 파일이 배포마다 새 주소로 불린다', async () => {
+  // core.js 에 규칙이 다 들어 있는데 주소가 늘 같으면 캐시에 걸려 옛 로직이
+  // 남는다. 배포해도 안 바뀌는 것처럼 보이던 원인 중 하나였다.
+  const src = fs.readFileSync(path.join(site, 'ui.js'), 'utf8');
+  if (!/from '\.\/core\.js\?v=/.test(src)) {
+    throw new Error('ui.js 가 core.js 를 버전 없이 부른다');
+  }
+  if (src.includes('__BUILD__')) throw new Error('ui.js 에 __BUILD__ 가 안 바뀐 채 남았다');
+});
+
 await check('앱에 넘길 알람 일정이 만들어진다', async () => {
   // 검사가 요일과 시각에 휘둘리지 않도록 입력을 직접 만든다.
   //
