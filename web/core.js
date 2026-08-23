@@ -1192,6 +1192,16 @@ export const shell = {
   requestNotify() { try { window.HennyShell?.requestNotify?.(); } catch (e) {} },
   openNotificationSettings() { try { window.HennyShell?.openNotificationSettings?.(); } catch (e) {} },
   openAlarmSettings() { try { window.HennyShell?.openAlarmSettings?.(); } catch (e) {} },
+  /**
+   * 주소를 폰 브라우저로 연다. 열어 줬으면 true.
+   *
+   * 옛 껍데기에는 이 통로가 없어 false 가 나온다. 그때는 링크를 눌러도
+   * 정말 아무 일도 일어나지 않으므로, 부르는 쪽이 주소를 눈에 보이게
+   * 띄우는 쪽으로 화면을 바꿔야 한다.
+   */
+  openExternal(url) {
+    try { return !!window.HennyShell?.openExternal?.(url); } catch (e) { return false; }
+  },
   /** 껍데기가 잰 화면 여백. 겹침을 진단할 때 숫자로 보기 위한 것이다. */
   insets() {
     try { return JSON.parse(window.HennyShell?.insets?.() || 'null'); } catch (e) { return null; }

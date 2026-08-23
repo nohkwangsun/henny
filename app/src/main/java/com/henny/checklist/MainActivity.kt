@@ -92,7 +92,31 @@ class MainActivity : ComponentActivity() {
             // 건너온다. 아래 Bridge 클래스가 이 앱의 "공개 API" 전부다.
             addJavascriptInterface(Bridge(), "HennyShell")
 
+            // 링크를 눌러 파일이 내려오면 WebView 는 아무 일도 하지 않는다.
+            // 화면에 그릴 수 없는 것은 조용히 버린다. APK 받기 버튼이 눌러도
+            // 무반응이던 이유가 이것이다. 내려받기는 껍데기가 받아 시스템에 넘긴다.
+            setDownloadListener { url, _, _, _, _ -> openOutside(url) }
+
             webViewClient = object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(
+                    view: WebView?,
+                    request: android.webkit.WebResourceRequest?
+                ): Boolean {
+                    val req = request ?: return false
+                    val url = req.url ?: return false
+                    // 화면 전체가 옮겨 가는 것만 본다. 안쪽 조각이 부르는 것까지
+                    // 가로채면 엉뚱한 요청에 브라우저가 뜬다.
+                    if (!req.isForMainFrame) return false
+                    // http(s) 가 아니면 손대지 않는다. 오프라인 안내 화면처럼
+                    // 주소가 없는 것(about:, data:)이 여기로 들어올 수 있다.
+                    if (url.scheme != "https" && url.scheme != "http") return false
+                    // 우리 사이트 안이면 이 화면에서 그대로 연다.
+                    if (url.host == SITE_HOST) return false
+                    // 밖으로 나가는 주소는 브라우저에 넘긴다. 이 WebView 는
+                    // 내려받기도 로그인도 못 하므로 안에서 열면 막다른 길이 된다.
+                    return openOutside(url.toString())
+                }
+
                 override fun onReceivedError(
                     view: WebView?,
                     request: android.webkit.WebResourceRequest?,
@@ -263,6 +287,23 @@ class MainActivity : ComponentActivity() {
                 .toString()
         }
 
+        /**
+         * 주소를 브라우저로 연다. APK 받기가 이 길을 쓴다.
+         *
+         * 웹은 이 메서드가 있는지 없는지로 껍데기 세대를 가른다. 없으면
+         * 옛 껍데기라 링크를 눌러도 아무 일이 없으므로, 주소를 눈에 보이게
+         * 띄워 주는 쪽으로 화면을 바꾼다.
+         *
+         * https 만 받는다. 이 메서드는 페이지에 열려 있고, 페이지가 늘
+         * 우리 것이라는 보장은 없다.
+         */
+        @JavascriptInterface
+        fun openExternal(url: String): Boolean {
+            if (!url.startsWith("https://")) return false
+            onMain { openOutside(url) }
+            return true
+        }
+
         @JavascriptInterface
         fun canNotify(): Boolean = Notifications.canPost(this@MainActivity)
 
@@ -323,6 +364,21 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * 주소를 앱 밖으로 넘긴다. 브라우저나 내려받기 관리자가 받는다.
+     *
+     * 넘기지 못하면 false 를 돌려준다. 부르는 쪽(shouldOverrideUrlLoading)이
+     * 그 값을 보고 "그럼 내가 연다"로 되돌아갈 수 있어야 하기 때문이다.
+     * 받아 줄 앱이 없는 기기가 실제로 있어서 runCatching 으로 감쌌다.
+     */
+    private fun openOutside(url: String): Boolean = runCatching {
+        startActivity(
+            Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+        true
+    }.getOrDefault(false)
+
     companion object {
         /**
          * 배포 주소. 여기만 바꾸면 다른 저장소로도 옮길 수 있다.
@@ -331,6 +387,9 @@ class MainActivity : ComponentActivity() {
          * 넣었기 때문에, 화면을 고치는 일이 APK 와 무관해진다.
          */
         const val APP_URL = "https://nohkwangsun.github.io/henny/"
+
+        /** APP_URL 의 호스트. 이 안이면 앱 화면, 밖이면 브라우저로 보낸다. */
+        private const val SITE_HOST = "nohkwangsun.github.io"
 
         /** 첫 실행에 네트워크가 없을 때 흰 화면 대신 띄우는 안내. */
         private const val OFFLINE_HTML = """

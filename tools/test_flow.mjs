@@ -452,7 +452,8 @@ await check('새 앱 버전이 있으면 받는 링크가 화면에 뜬다', asy
 
   const h = await pg.content();
   if (!h.includes('새 버전 1.0.99')) throw new Error('새 버전 안내가 안 떴다');
-  if (!h.includes('releases/latest/download/henny.apk')) throw new Error('받는 링크가 없다');
+  // 링크가 아니라 버튼이어야 한다. WebView 는 파일이 내려오는 <a> 를 그냥 버린다.
+  if (!h.includes('data-act="get-apk"')) throw new Error('받기 버튼이 없다');
 
   // 닫으면 그 버전에 대해서는 다시 뜨지 않는다
   await pg.click('[data-act="hide-update"]');
@@ -621,6 +622,63 @@ await check('로직 파일이 배포마다 새 주소로 불린다', async () =>
     throw new Error('ui.js 가 core.js 를 버전 없이 부른다');
   }
   if (src.includes('__BUILD__')) throw new Error('ui.js 에 __BUILD__ 가 안 바뀐 채 남았다');
+});
+
+await check('받기 버튼이 브라우저로 넘긴다', async () => {
+  // "받기 눌러도 무반응"으로 신고된 자리다. WebView 는 눌러서 파일이 내려오는
+  // 링크를 화면에 그릴 수 없다는 이유로 조용히 버린다. 그래서 <a href=...apk>
+  // 는 앱 안에서 처음부터 죽은 링크였다. 실제로 눌러서 확인한다.
+  const dev = await browser.newContext({ viewport: { width: 412, height: 915 } });
+  await dev.route(FAKE_DB + '/**', serveDb);
+  await dev.addInitScript(() => {
+    window.__opened = [];
+    window.HennyShell = {
+      version: () => '1.0.40', canNotify: () => true,
+      setSchedule: () => {}, legacyData: () => '',
+      openExternal: (u) => { window.__opened.push(u); return true; },
+    };
+    // 새 버전이 있다고 캐시에 심어 둔다. 깃허브에 묻지 않아도 배너가 뜬다.
+    localStorage.setItem('henny.update', JSON.stringify({ tag: 'v9.9.9', at: Date.now() }));
+    localStorage.setItem('henny.settings', JSON.stringify({
+      setupDone: true, role: 'WORKER', workerId: 'w1', backend: 'LOCAL',
+    }));
+  });
+  const pg = await dev.newPage();
+  await pg.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
+  await pg.waitForSelector('[data-act="get-apk"]', { timeout: 5000 });
+  await pg.click('[data-act="get-apk"]');
+  await pg.waitForTimeout(200);
+  const opened = await pg.evaluate(() => window.__opened);
+  if (!opened.length) throw new Error('받기를 눌러도 아무 데도 넘기지 않았다');
+  if (!/releases\/latest\/download\/henny\.apk$/.test(opened[0])) {
+    throw new Error('넘긴 주소가 고정 APK 주소가 아니다: ' + opened[0]);
+  }
+  await dev.close();
+});
+
+await check('받기 통로가 없는 옛 껍데기에서는 주소를 띄운다', async () => {
+  // 이 버튼을 누르는 사람은 바로 그 옛 껍데기를 쓰고 있는 사람이다.
+  // 여기서 또 아무 일도 없으면 고친 의미가 없다.
+  const dev = await browser.newContext({ viewport: { width: 412, height: 915 } });
+  await dev.route(FAKE_DB + '/**', serveDb);
+  await dev.addInitScript(() => {
+    window.HennyShell = {
+      version: () => '1.0.40', canNotify: () => true,
+      setSchedule: () => {}, legacyData: () => '',
+    };
+    localStorage.setItem('henny.update', JSON.stringify({ tag: 'v9.9.9', at: Date.now() }));
+    localStorage.setItem('henny.settings', JSON.stringify({
+      setupDone: true, role: 'WORKER', workerId: 'w1', backend: 'LOCAL',
+    }));
+  });
+  const pg = await dev.newPage();
+  await pg.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
+  await pg.waitForSelector('[data-act="get-apk"]', { timeout: 5000 });
+  await pg.click('[data-act="get-apk"]');
+  await pg.waitForTimeout(200);
+  const shown = await pg.evaluate(() => document.querySelector('#modal-root')?.textContent || '');
+  if (!shown.includes('henny.apk')) throw new Error('주소를 보여주지 않았다: ' + shown.slice(0, 80));
+  await dev.close();
 });
 
 await check('앱에 넘길 알람 일정이 만들어진다', async () => {

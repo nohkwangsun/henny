@@ -261,6 +261,8 @@ nav.tabs button { transition: color .15s; }
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
   word-break: break-all; background: var(--track); padding: 10px; border-radius: 10px;
   color: var(--muted);
+  /* 복사 버튼이 막히는 판이 있다. 길게 눌러 직접 집을 수 있어야 한다. */
+  user-select: all; -webkit-user-select: all;
 }
 
 .toast {
@@ -332,12 +334,14 @@ details pre.code { margin: 8px 0 0; white-space: pre-wrap; }
   border-radius: 14px; padding: 12px 12px 12px 16px; margin: 0 0 14px;
 }
 .update b { font-size: 15px; }
-a.btn {
+/* 링크로도 버튼으로도 쓴다. 앱 안에서 파일을 받는 것은 <a> 로는 안 돼서
+   받기는 버튼이 되었는데, 생김새는 그대로여야 한다. */
+.btn {
   background: var(--teal); color: #fff; text-decoration: none;
   font-weight: 700; font-size: 14px; padding: 10px 16px;
   border-radius: 999px; white-space: nowrap; flex: 0 0 auto;
 }
-a.btn:active { opacity: .85; }
+.btn:active { opacity: .85; }
 
 /* 오늘 진행 — 큰 원 대신 가는 막대 한 줄. 목록을 밀어내지 않는다. */
 .progress { margin-bottom: 14px; }
