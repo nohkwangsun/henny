@@ -22,7 +22,7 @@ globalThis.localStorage = new Proxy(globalThis.localStorage, {
 globalThis.window = { HennyShell: null };
 
 const { Repo, dateKey, addDays, computeSchedule, minuteToText, daysText, isoDow, DEFAULT_POINTS,
-  mergePlans, importLegacy } = await import('../web/core.js');
+  mergePlans, importLegacy, mergeProgress } = await import('../web/core.js');
 
 let pass = 0;
 const fails = [];
@@ -195,6 +195,77 @@ check('복구 후에도 경로 유지', repo3.settings.planBin, planBin1);
   const id = r.plan.routines[0].id;
   r.deleteRoutine(id);
   ok('지우면 표시가 남는다', Boolean(r.plan.deleted[id]));
+}
+
+// --- 마일리지 원장
+{
+  const r = new Repo();
+  r.updateSettings({ role: 'MANAGER', setupDone: true });
+  const w = r.addWorker('원장검사');
+  const today = new Date();
+  const dow = isoDow(today);
+  r.addRoutine(w.id, '적립 작업', [dow], null, 300);
+  const t = r.tasksFor(w.id, today)[0];
+
+  r.toggle(w.id, today, t.id);
+  check('체크하면 잔액이 오른다', r.lifetimePoints(w.id), 300);
+
+  // 같은 것을 껐다 켜도 두 번 쌓이지 않아야 한다
+  r.toggle(w.id, today, t.id);
+  check('체크를 끄면 되돌아간다', r.lifetimePoints(w.id), 0);
+  r.toggle(w.id, today, t.id);
+  check('다시 켜도 한 번만 쌓인다', r.lifetimePoints(w.id), 300);
+
+  // 관리자가 손으로 빼기 — 모은 것을 쓰는 경우
+  r.adjustPoints(w.id, -200, '문구점');
+  check('쓰면 잔액이 줄어든다', r.lifetimePoints(w.id), 100);
+  r.adjustPoints(w.id, 500, '보너스');
+  check('상을 주면 잔액이 오른다', r.lifetimePoints(w.id), 600);
+
+  ok('내역이 남는다', r.ledgerOf(w.id).length === 3);
+
+  // 배점을 나중에 고쳐도 이미 쌓인 것은 그대로여야 한다
+  const rid = r.plan.routines[0].id;
+  r.updateRoutine({ ...r.plan.routines[0], points: 9999 });
+  check('배점을 고쳐도 쌓인 잔액은 그대로', r.lifetimePoints(w.id), 600);
+
+  // 오래된 기록이 정리돼도 잔액은 줄지 않아야 한다.
+  // 예전에는 남은 기록을 다시 더하는 방식이라 여기서 값이 흔들렸다.
+  const p = r.progressOf(w.id);
+  const old = dateKey(addDays(today, -400));
+  r.saveProgress(w.id, {
+    ...p,
+    days: { ...p.days, [old]: { date: old, items: [], updatedAt: 1 } },
+  });
+  check('오래된 기록을 정리해도 잔액은 그대로', r.lifetimePoints(w.id), 600);
+}
+
+// --- 음수 배점 (감점 작업)
+{
+  const r = new Repo();
+  r.updateSettings({ role: 'MANAGER', setupDone: true });
+  const w = r.addWorker('감점검사');
+  const today = new Date();
+  r.addRoutine(w.id, '지각', [isoDow(today)], null, -50);
+  const t = r.tasksFor(w.id, today)[0];
+  r.toggle(w.id, today, t.id);
+  check('음수 배점은 잔액을 깎는다', r.lifetimePoints(w.id), -50);
+}
+
+// --- 두 기기가 각자 적립해도 합쳐진다
+{
+  const base = { schema: 2, workerId: 'w1', updatedAt: 0, days: {}, archive: [], ledger: [] };
+  const a = { ...base, ledger: [{ id: 'd:2026-01-01:t1', at: 10, delta: 100, reason: 'ㄱ' }] };
+  const b = { ...base, ledger: [{ id: 'adj_x', at: 20, delta: -30, reason: '사용' }] };
+  const m = mergeProgress(a, b);
+  check('두 기기의 원장이 모두 남는다', m.ledger.length, 2);
+
+  // 같은 사건은 나중 것을 따른다 (껐다 켠 결과가 뒤집히면 안 된다)
+  const c = { ...base, ledger: [{ id: 'd:2026-01-01:t1', at: 30, delta: 0, reason: 'ㄱ' }] };
+  const m2 = mergeProgress(a, c);
+  check('같은 사건은 나중에 적힌 쪽', m2.ledger.reduce((s, e) => s + e.delta, 0), 0);
+  check('합치는 순서가 결과를 바꾸지 않는다',
+    mergeProgress(c, a).ledger.reduce((s, e) => s + e.delta, 0), 0);
 }
 
 // --- 예전 앱 자료 이관

@@ -27,8 +27,22 @@ html, body { margin: 0; padding: 0; }
 body {
   background: var(--bg); color: var(--ink);
   font: 16px/1.5 -apple-system, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
-  padding-bottom: env(safe-area-inset-bottom);
   overscroll-behavior-y: contain;
+
+  /* 상태바·노치·제스처바 자리를 피한다.
+   *
+   * 안드로이드는 앱이 시스템 막대 뒤까지 그린다(targetSdk 35+). 그대로 두면
+   * 맨 윗줄이 시계와 겹친다. 예전에는 껍데기(MainActivity)가 밀어 줬는데,
+   * 그러면 껍데기를 새로 설치해야만 고쳐진다. 웹이 직접 피하도록 옮겼다.
+   * 이제 배포만 하면 반영된다.
+   *
+   * 껍데기가 이미 밀어 준 경우에는 이 값이 0 이라 이중으로 밀리지 않는다.
+   * (새 껍데기는 인셋을 소비해 웹에 0 으로 전달한다)
+   */
+  padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
 }
 /* 아래 여백은 탭바를 가리지 않을 만큼만. 탭바가 없는 작업자 화면에서는
    그만큼 빈 자리가 남아 화면이 어중간하게 끝났다. */
@@ -230,3 +244,30 @@ details summary {
   cursor: pointer; padding: 8px 0; font-size: 14px;
 }
 details pre.code { margin: 8px 0 0; white-space: pre-wrap; }
+
+/* 감점(음수) 표시. 숫자만 다르면 못 알아채므로 색으로도 구분한다. */
+.pts.minus, .plus { }
+.pts.minus { color: var(--error) !important; }
+.plus { color: var(--teal); }
+.chip.minus { background: color-mix(in srgb, var(--error) 14%, transparent); color: var(--error); }
+.chip.minus.on { background: var(--error); color: #fff; }
+
+/* 관리자가 작업자 대신 완료를 누를 수 있는 줄 */
+.mrow { gap: 4px; }
+.mcheck {
+  flex: 1; display: flex; align-items: center; gap: 10px;
+  background: transparent; border: none; border-radius: 12px;
+  padding: 8px; margin: 0 -8px; color: inherit; font: inherit;
+  font-weight: 400; text-align: left; min-height: 44px;
+}
+.mcheck:active { background: var(--track); }
+.mcheck .dot {
+  width: 22px; height: 22px; border-radius: 999px; flex: 0 0 auto;
+  background: var(--track); display: grid; place-items: center;
+  color: #fff; font-size: 13px; font-weight: 700;
+}
+.mcheck .dot.on { background: var(--accent); }
+
+/* 마일리지 내역 */
+.ledger { max-height: 46vh; overflow-y: auto; }
+.ledger .list-row b:last-child { font-size: 15px; white-space: nowrap; }

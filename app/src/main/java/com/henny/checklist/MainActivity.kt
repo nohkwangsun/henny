@@ -122,7 +122,10 @@ class MainActivity : ComponentActivity() {
                     or androidx.core.view.WindowInsetsCompat.Type.displayCutout()
             )
             view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
-            insets
+            // 여기서 소비해야 웹 쪽 env(safe-area-inset-*) 가 0 이 된다.
+            // 웹도 같은 자리를 피하도록 되어 있어서, 소비하지 않으면 양쪽이
+            // 모두 밀어 위쪽에 빈 띠가 두 번 생긴다.
+            androidx.core.view.WindowInsetsCompat.CONSUMED
         }
 
         // 안드로이드의 뒤로 가기는 브라우저의 뒤로 가기와 다르다. 기본 동작은

@@ -34,6 +34,9 @@ const modalRoot = document.getElementById('modal-root');
 const ACCENTS = ['--w0', '--w1', '--w2', '--w3'];
 
 let tab = 'TODAY';
+// 통계에서 몇 주/몇 달 전을 보고 있는지. 0 이 지금이고 음수가 과거다.
+let weekOffset = 0;
+let monthOffset = 0;
 let statsWorker = '';
 let tasksWorker = '';
 let modal = null;
@@ -292,7 +295,7 @@ function viewWorker() {
           <span class="title">${esc(t.title)}</span>
           ${t.dueMinute != null ? `<br><span class="muted">${minuteToText(t.dueMinute)}까지</span>` : ''}
         </span>
-        <span class="pts">${t.points}P</span>
+        <span class="pts ${t.points < 0 ? 'minus' : ''}">${t.points > 0 ? '+' : ''}${t.points}P</span>
       </button>`).join('')}
 
     <div class="card" style="--accent:${accent}">
@@ -300,7 +303,7 @@ function viewWorker() {
       ${bars(week.perDay, accent)}
       <div style="height:14px"></div>
       ${pills([['달성률', week.rate + '%'], ['이번 주', week.points + 'P'], ['연속', repo.streak(s.workerId) + '일']], accent)}
-      <div class="spread" style="margin-top:14px">
+      <div class="spread tappable" style="margin-top:14px" data-act="ledger" data-id="${esc(s.workerId)}">
         <span class="muted">지금까지 모은 마일리지</span>
         <b style="font-size:20px;color:${accent}">${repo.lifetimePoints(s.workerId)}P</b>
       </div>
@@ -335,16 +338,22 @@ function viewManagerToday() {
           ${ring(done.length, tasks.length, accent, 86)}
         </div>
         <div style="height:10px"></div>
-        ${tasks.map((t) => `<div class="row" style="padding:5px 0">
-          <span style="width:14px;height:14px;border-radius:99px;flex:0 0 auto;background:${t.doneAt ? accent : 'var(--track)'}"></span>
-          <span class="grow" style="${t.doneAt ? 'color:var(--muted);text-decoration:line-through' : ''}">${esc(t.title)}${t.isAssignment ? ' (임시)' : ''}</span>
-          <span class="muted" style="font-size:12px">${t.doneAt ? doneAtText(t.doneAt) + ' 완료'
-            : t.dueMinute != null ? minuteToText(t.dueMinute) + '까지' : ''}</span>
-          <b style="font-size:13px;color:${t.doneAt ? accent : 'var(--muted)'}">${t.points}P</b>
+        ${tasks.map((t) => `<div class="row mrow" style="padding:2px 0">
+          <button class="mcheck" data-act="mgr-toggle" data-id="${w.id}:${t.id}"
+                  title="${t.doneAt ? '완료 해제' : '완료로 표시'}">
+            <span class="dot ${t.doneAt ? 'on' : ''}" style="--accent:${accent}">${t.doneAt ? '✓' : ''}</span>
+            <span class="grow" style="${t.doneAt ? 'color:var(--muted);text-decoration:line-through' : ''}">${esc(t.title)}${t.isAssignment ? ' (임시)' : ''}</span>
+            <span class="muted" style="font-size:12px">${t.doneAt ? doneAtText(t.doneAt) + ' 완료'
+              : t.dueMinute != null ? minuteToText(t.dueMinute) + '까지' : ''}</span>
+            <b style="font-size:13px;color:${t.doneAt ? accent : (t.points < 0 ? 'var(--error)' : 'var(--muted)')}">${t.points > 0 ? '+' : ''}${t.points}P</b>
+          </button>
           ${t.isAssignment ? `<button class="icon" data-act="del-assignment" data-id="${t.id}" title="배정 취소">✕</button>` : ''}
         </div>`).join('')}
         <div style="height:8px"></div>
-        <button class="ghost" data-act="assign" data-id="${w.id}">＋ 임시 작업 배정</button>
+        <div class="row" style="gap:8px">
+          <button class="ghost grow" data-act="assign" data-id="${w.id}">＋ 임시 작업</button>
+          <button class="ghost grow" data-act="give-points" data-id="${w.id}">마일리지 주기 / 쓰기</button>
+        </div>
       </div>`;
     }).join('')}`;
 }
@@ -360,23 +369,76 @@ function workerChips(selected, act) {
       data-act="${act}" data-id="${w.id}">${esc(w.name)}</button>`).join('')}</div>`;
 }
 
+/**
+ * 기간을 앞뒤로 넘기는 머리줄.
+ *
+ * 예전에는 늘 "이번 주"와 "이번 달"만 봤다. 주가 바뀌면 지난주에 얼마나 했는지
+ * 볼 방법이 아예 없었다. 기록은 남아 있는데 화면에 길이 없었던 것이다.
+ */
+function periodHead(label, act, canForward) {
+  return `<div class="spread" style="margin-bottom:10px">
+    <button class="icon" data-act="${act}" data-id="-1" title="이전">‹</button>
+    <b>${esc(label)}</b>
+    <button class="icon" data-act="${act}" data-id="1" ${canForward ? '' : 'disabled'} title="다음">›</button>
+  </div>`;
+}
+
 function viewManagerStats() {
   if (!statsWorker) statsWorker = repo.plan.workers[0]?.id || '';
   const i = Math.max(0, repo.plan.workers.findIndex((w) => w.id === statsWorker));
   const accent = accentOf(i);
   if (!statsWorker) return '<h1>통계</h1><div class="card">작업자를 먼저 추가하세요.</div>';
-  const week = repo.weekStat(statsWorker);
-  const month = repo.monthStat(statsWorker);
+
+  const now = new Date();
+  const weekAnchor = addDays(now, weekOffset * 7);
+  const monthAnchor = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
+  const week = repo.weekStat(statsWorker, weekAnchor);
+  const month = repo.monthStat(statsWorker, monthAnchor);
+
+  const monday = addDays(weekAnchor, -(isoDow(weekAnchor) - 1));
+  const sunday = addDays(monday, 6);
+  const weekLabel = weekOffset === 0 ? '이번 주'
+    : `${monday.getMonth() + 1}.${monday.getDate()} ~ ${sunday.getMonth() + 1}.${sunday.getDate()}`;
+  const monthLabel = monthOffset === 0 ? `${now.getMonth() + 1}월`
+    : `${monthAnchor.getFullYear()}년 ${monthAnchor.getMonth() + 1}월`;
+
+  // 150일이 지난 기록은 일별로 남지 않고 월별 합계로만 남는다. 그 구간을
+  // 열면 막대가 텅 비어 보이므로 왜 그런지 적어 준다.
+  const stale = addDays(now, -150);
+  const tooOld = sunday < stale;
+  const archived = (repo.progressOf(statsWorker).archive || [])
+    .find((m) => m.month === `${monthAnchor.getFullYear()}-${String(monthAnchor.getMonth() + 1).padStart(2, '0')}`);
+
   return `<h1>통계</h1><div style="height:12px"></div>
     ${workerChips(statsWorker, 'pick-stats')}
-    <div class="card" style="--accent:${accent}"><h3>이번 주</h3>
+
+    <div class="card" style="--accent:${accent}">
+      ${periodHead(weekLabel, 'week-move', weekOffset < 0)}
+      ${tooOld ? '<p class="muted">150일이 지난 기록은 일별로 남기지 않습니다. 아래 월별 합계로 보세요.</p>' : ''}
       ${bars(week.perDay, accent)}<div style="height:14px"></div>
       ${pills([['달성률', week.rate + '%'], ['마일리지', week.points + 'P'], ['완벽한 날', week.perfectDays + '일']], accent)}
     </div>
-    <div class="card" style="--accent:${accent}"><h3>${new Date().getMonth() + 1}월</h3>
+
+    <div class="card" style="--accent:${accent}">
+      ${periodHead(monthLabel, 'month-move', monthOffset < 0)}
       ${dots(month.perDay, accent)}<div style="height:14px"></div>
       ${pills([['달성률', month.rate + '%'], ['마일리지', month.points + 'P'], ['완벽한 날', month.perfectDays + '일']], accent)}
-      <div class="muted" style="margin-top:10px">전체 ${month.total}개 중 ${month.done}개 완료 · 누적 마일리지 ${repo.lifetimePoints(statsWorker)}P</div>
+      ${archived && month.total === 0
+        ? `<div class="muted" style="margin-top:10px">정리된 달입니다. 합계로만 남아 있습니다 —
+           ${archived.total}개 중 ${archived.done}개 완료 · ${archived.points}P</div>`
+        : `<div class="muted" style="margin-top:10px">전체 ${month.total}개 중 ${month.done}개 완료</div>`}
+    </div>
+
+    <div class="card" style="--accent:${accent}">
+      <div class="spread">
+        <div><h3 style="margin:0">모은 마일리지</h3>
+          <div class="muted">작업으로 쌓인 것과 직접 조정한 것을 모두 더한 값입니다.</div></div>
+        <b style="font-size:26px;color:${accent}">${repo.lifetimePoints(statsWorker)}P</b>
+      </div>
+      <div class="row" style="margin-top:12px;gap:8px">
+        <button class="ghost grow" data-act="ledger" data-id="${statsWorker}">내역 보기</button>
+        <button class="grow" data-act="give-points" data-id="${statsWorker}">주기 / 쓰기</button>
+      </div>
     </div>`;
 }
 
@@ -432,7 +494,7 @@ function viewSettings(isManager) {
       ${repo.plan.workers.map((w) => `<div class="list-row">
         <div class="grow tappable" data-act="rename-worker" data-id="${w.id}">
           <div class="grow"><b>${esc(w.name)}</b>
-            <div class="muted">${s.progressBins[w.id] ? '연결됨' : '저장 공간 없음'}</div></div></div>
+            <div class="muted">${s.progressBins[w.id] ? '연결됨' : '저장 공간 없음'} · ${repo.lifetimePoints(w.id)}P</div></div></div>
         <button class="plain" data-act="show-code" data-id="${w.id}">연결 코드</button>
         <button class="danger" data-act="del-worker" data-id="${w.id}">삭제</button>
       </div>`).join('')}
@@ -644,12 +706,25 @@ const ACTIONS = {
   'toggle': (id) => repo.toggle(repo.settings.workerId, new Date(), id),
   'sync': () => { repo.sync(); toast('맞추는 중…'); },
   'tab': (id) => { tab = id; },
-  'pick-stats': (id) => { statsWorker = id; },
+  'pick-stats': (id) => { statsWorker = id; weekOffset = 0; monthOffset = 0; },
+  // 앞으로는 지금(0)을 넘지 않는다. 아직 오지 않은 주를 볼 이유가 없다.
+  'week-move': (id) => { weekOffset = Math.min(0, weekOffset + Number(id)); },
+  'month-move': (id) => { monthOffset = Math.min(0, monthOffset + Number(id)); },
+  'ledger': (id) => openLedgerModal(id),
   'pick-tasks': (id) => { tasksWorker = id; },
   'open-settings': () => { workerSettingsOpen = true; },
   'close-settings': () => { workerSettingsOpen = false; },
 
   'assign': (id) => openAssignmentModal(id),
+
+  // 관리자가 작업자 대신 완료를 표시한다. 작업자가 폰을 안 들고 있거나
+  // 직접 확인한 경우에 쓴다. 눌린 값은 "작업자id:작업id" 형태다.
+  'mgr-toggle': (id) => {
+    const [workerId, taskId] = String(id).split(':');
+    repo.toggle(workerId, new Date(), taskId);
+  },
+
+  'give-points': (id) => openAdjustModal(id),
   'del-assignment': (id) => {
     const a = repo.plan.assignments.find((x) => x.id === id);
     openModal(() => modalShell('배정 취소',
@@ -727,20 +802,69 @@ function showCode(title, code, note) {
      <button data-act="copy" data-id="${esc(code)}">복사하기</button>`));
 }
 
-/** 배점은 매번 손으로 치기 번거롭다. 자주 쓰는 값을 눌러 넣게 한다. */
-const POINT_CHOICES = [50, 100, 200, 500];
+/**
+ * 배점은 매번 손으로 치기 번거롭다. 자주 쓰는 값을 눌러 넣게 한다.
+ * 음수도 둔다. 지각처럼 하면 깎이는 것을 작업으로 만들 수 있다.
+ */
+const POINT_CHOICES = [-100, -50, 50, 100, 200, 500];
 
 function pointsField(value) {
-  return `<div><span class="muted">마일리지</span>
+  return `<div><span class="muted">마일리지 (음수를 넣으면 감점 작업이 됩니다)</span>
     <div class="chips" style="margin:6px 0 8px">${POINT_CHOICES.map((p) =>
-      `<button class="chip ${p === value ? 'on' : ''}" style="--accent:var(--teal)"
-        data-act="points" data-id="${p}">${p}P</button>`).join('')}</div>
-    <input id="m-points" type="number" inputmode="numeric" min="0" value="${value}"></div>`;
+      `<button class="chip ${p === value ? 'on' : ''} ${p < 0 ? 'minus' : ''}" style="--accent:var(--teal)"
+        data-act="points" data-id="${p}">${p > 0 ? '+' : ''}${p}P</button>`).join('')}</div>
+    <input id="m-points" type="number" inputmode="numeric" value="${value}"></div>`;
 }
 
 function dayButtons(days) {
   return [1, 2, 3, 4, 5, 6, 7].map((d) =>
     `<button class="${days.includes(d) ? 'on' : ''}" data-act="day" data-id="${d}">${'월화수목금토일'[d - 1]}</button>`).join('');
+}
+
+/**
+ * 마일리지를 직접 더하거나 뺀다. 상을 주거나, 모은 것을 쓸 때.
+ * 원장에 한 줄로 남으므로 나중에 무엇 때문이었는지 볼 수 있다.
+ */
+function openAdjustModal(workerId) {
+  const ADJUST = [-500, -200, -100, 100, 200, 500];
+  openModal(() => modalShell(`${repo.workerName(workerId)}의 마일리지`,
+    `<p class="muted">지금 <b>${repo.lifetimePoints(workerId)}P</b> 모았습니다.</p>
+     <div class="stack">
+       <div><span class="muted">얼마나</span>
+         <div class="chips" style="margin:6px 0 8px">${ADJUST.map((v) =>
+           `<button class="chip ${v < 0 ? 'minus' : ''}" style="--accent:var(--teal)"
+             data-act="points" data-id="${v}">${v > 0 ? '+' : ''}${v}P</button>`).join('')}</div>
+         <input id="m-points" type="number" inputmode="numeric" value="0"></div>
+       <label class="field"><span>무엇 때문에</span>
+         <input id="m-title" placeholder="예: 문구점에서 사용, 심부름 보너스"></label>
+     </div>`,
+    `<button class="ghost" data-act="close">취소</button><button data-act="confirm">기록</button>`));
+  pointsPick = makePointsPick();
+  pendingConfirm = () => {
+    const delta = parseInt(document.getElementById('m-points').value, 10) || 0;
+    if (!delta) { toast('0 이 아닌 값을 넣어 주세요.'); return; }
+    const why = document.getElementById('m-title').value.trim();
+    closeModal();
+    repo.adjustPoints(workerId, delta, why);
+    toast(`${delta > 0 ? '+' : ''}${delta}P 기록했습니다.`);
+  };
+}
+
+/** 마일리지가 어떻게 오르내렸는지. 숫자만 보면 왜 그런지 알 수 없다. */
+function openLedgerModal(workerId) {
+  const rows = repo.ledgerOf(workerId, 60);
+  openModal(() => modalShell(`${repo.workerName(workerId)}의 마일리지 내역`,
+    rows.length === 0 ? '<p class="muted">아직 내역이 없습니다.</p>'
+      : `<p class="muted">지금 <b>${repo.lifetimePoints(workerId)}P</b> · 최근 ${rows.length}건</p>
+         <div class="ledger">${rows.map((e) => {
+           const d = e.at ? new Date(e.at) : null;
+           return `<div class="list-row">
+             <div class="grow"><b>${esc(e.reason || '작업')}</b>
+               <div class="muted">${d ? `${d.getMonth() + 1}월 ${d.getDate()}일` : '이전 기록'}</div></div>
+             <b class="${e.delta < 0 ? 'err' : 'plus'}">${e.delta > 0 ? '+' : ''}${e.delta}P</b>
+           </div>`;
+         }).join('')}</div>`,
+    `<button class="ghost" data-act="close">닫기</button>`));
 }
 
 function openAssignmentModal(workerId) {

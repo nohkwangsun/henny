@@ -80,6 +80,16 @@ async function waitUpload(test, label) {
   throw new Error(`${label} 이(가) 저장소에 올라오지 않았다`);
 }
 
+/** 모달의 요일 버튼을 모두 켠다. 검사가 무슨 요일에 돌든 같게 하려는 것이다. */
+async function enableAllDays(page) {
+  const count = (await page.$$('.days button')).length;
+  for (let i = 0; i < count; i++) {
+    const b = (await page.$$('.days button'))[i];
+    const on = ((await b.getAttribute('class')) || '').includes('on');
+    if (!on) await b.click();
+  }
+}
+
 const manager = await device('관리자');
 const html = (p) => p.content();
 
@@ -103,6 +113,12 @@ await check('정기 작업을 만들면 저장소에 올라간다', async () => 
   await manager.click('[data-act="add-routine"]');
   await manager.fill('#m-title', '수학 문제집 2장');
   await manager.fill('#m-points', '150');
+  // 매일 하는 작업으로 만든다.
+  //
+  // 기본값이 평일(월~금)이라 그대로 두면 주말에 돌릴 때 오늘치 작업이 없다.
+  // 그러면 뒤따르는 작업자 검사가 통째로 깨진다. 실제로 일요일에 4건이
+  // 한꺼번에 실패했다. 기능 문제가 아니라 검사가 요일에 매인 문제였다.
+  await enableAllDays(manager);
   await manager.click('[data-act="confirm"]');
   if (!(await html(manager)).includes('수학 문제집 2장')) throw new Error('목록에 안 보인다');
   await waitUpload((v) => v.includes('수학 문제집 2장'), '정기 작업');
@@ -339,6 +355,76 @@ await check('키보드가 올라와도 저장 버튼에 닿는다', async () => 
 
   await manager.evaluate(() => document.documentElement.style.removeProperty('--vvh'));
   await manager.waitForTimeout(200);
+});
+
+console.log('마일리지와 통계');
+
+await check('관리자가 작업자 대신 완료를 표시할 수 있다', async () => {
+  // 오늘 확실히 있는 작업을 하나 만든다. 정기 작업은 요일을 타므로
+  // 임시 작업으로 둔다. 날짜가 바뀌어도 결과가 같다.
+  await manager.click('[data-act="tab"][data-id="TODAY"]');
+  await manager.waitForTimeout(300);
+  await manager.click('[data-act="assign"]');
+  await manager.fill('#m-title', '관리자가 대신 체크');
+  await manager.click('[data-act="confirm"]');
+  await manager.waitForTimeout(500);
+
+  const rows = await manager.$$('[data-act="mgr-toggle"]');
+  if (!rows.length) throw new Error('누를 수 있는 작업 줄이 없다');
+  await rows[rows.length - 1].click();
+  await manager.waitForTimeout(600);
+  if (!/완료/.test(await html(manager))) throw new Error('완료 표시가 안 됐다');
+});
+
+await check('마일리지를 직접 주고 쓸 수 있다', async () => {
+  await manager.click('[data-act="give-points"]');
+  await manager.waitForTimeout(300);
+  await manager.click('[data-act="points"][data-id="-200"]');
+  await manager.fill('#m-title', '문구점');
+  await manager.click('[data-act="confirm"]');
+  await manager.waitForTimeout(500);
+
+  await manager.click('[data-act="tab"][data-id="STATS"]');
+  await manager.waitForTimeout(300);
+  await manager.click('[data-act="ledger"]');
+  await manager.waitForTimeout(300);
+  const h = await html(manager);
+  if (!h.includes('문구점')) throw new Error('내역에 안 남았다');
+  if (!h.includes('-200P')) throw new Error('차감이 안 보인다');
+  await manager.click('[data-act="close"]');
+  await manager.waitForTimeout(300);
+});
+
+await check('통계에서 지난 주와 지난 달을 볼 수 있다', async () => {
+  await manager.click('[data-act="tab"][data-id="STATS"]');
+  await manager.waitForTimeout(300);
+  if (!(await html(manager)).includes('이번 주')) throw new Error('이번 주가 안 보인다');
+
+  await manager.click('[data-act="week-move"][data-id="-1"]');
+  await manager.waitForTimeout(300);
+  if ((await html(manager)).includes('이번 주')) throw new Error('지난 주로 안 넘어갔다');
+
+  // 앞으로는 지금을 넘지 못한다
+  await manager.click('[data-act="week-move"][data-id="1"]');
+  await manager.waitForTimeout(300);
+  if (!(await html(manager)).includes('이번 주')) throw new Error('이번 주로 안 돌아왔다');
+
+  await manager.click('[data-act="month-move"][data-id="-1"]');
+  await manager.waitForTimeout(300);
+  if (!/\d+년 \d+월/.test(await html(manager))) throw new Error('지난 달로 안 넘어갔다');
+});
+
+await check('감점 작업을 만들 수 있다', async () => {
+  await manager.click('[data-act="tab"][data-id="TASKS"]');
+  await manager.click('[data-act="add-routine"]');
+  await manager.fill('#m-title', '지각');
+  await manager.click('[data-act="points"][data-id="-100"]');
+  await manager.waitForTimeout(150);
+  if (await manager.inputValue('#m-points') !== '-100') throw new Error('음수 배점이 안 들어갔다');
+  await enableAllDays(manager);
+  await manager.click('[data-act="confirm"]');
+  await manager.waitForTimeout(400);
+  if (!(await html(manager)).includes('지각')) throw new Error('감점 작업이 저장되지 않았다');
 });
 
 await check('앱에 넘길 알람 일정이 만들어진다', async () => {

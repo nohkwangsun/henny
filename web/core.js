@@ -180,8 +180,54 @@ export const EMPTY_PLAN = {
 };
 
 const emptyProgress = (workerId) => ({
-  schema: 1, workerId, updatedAt: 0, days: {}, archive: [],
+  schema: 2, workerId, updatedAt: 0, days: {}, archive: [], ledger: [],
 });
+
+/**
+ * 마일리지 원장.
+ *
+ * 예전에는 누적 마일리지를 "지금 남아 있는 체크 기록을 전부 다시 더해서" 냈다.
+ * 그래서 값이 기록에 딸려 흔들렸다. 150일이 지나 기록이 정리되거나, 관리자가
+ * 배점을 고치거나, 체크를 껐다 켜면 누적이 같이 움직였다. 무엇보다 모은 것을
+ * "쓰는" 방법이 없었다. 상을 주고 차감할 자리가 아예 없었기 때문이다.
+ *
+ * 이제는 적립도 차감도 하나의 사실로 원장에 남긴다. 잔액은 그 사실들의 합이다.
+ * 체크 기록을 정리해도 원장은 그대로이므로 누적이 줄지 않는다.
+ *
+ *   { id, at, delta, reason }
+ *
+ * id 는 같은 사건에 늘 같은 값이 나오게 짓는다. 작업 체크는
+ * "d:<날짜>:<작업id>" 라서 껐다 켜도 줄이 하나뿐이고, 기기 두 대가 각자
+ * 올려도 합칠 때 겹치지 않는다. 체크를 끄면 지우는 대신 delta 를 0 으로 둔다.
+ * 지우면 상대 기기의 옛 줄이 되살아나기 때문이다(계획 쪽 삭제 표시와 같은 이유).
+ */
+function ledgerId(dateKeyStr, taskId) { return `d:${dateKeyStr}:${taskId}`; }
+
+/**
+ * 원장이 없던 시절의 자료에 원장을 한 번 만들어 준다.
+ *
+ * 남아 있는 일별 기록과 월별 합계를 훑어 그때의 적립을 그대로 옮긴다. 둘은
+ * 겹치지 않으므로(정리된 것만 월별로 넘어간다) 이중으로 더해지지 않는다.
+ * 결과는 예전 방식으로 계산하던 값과 같다. 한 번 만들고 나면 다시 만들지 않는다.
+ */
+function ensureLedger(p) {
+  if (Array.isArray(p.ledger)) return p;
+  const ledger = [];
+  Object.entries(p.days || {}).forEach(([key, log]) => {
+    (log.items || []).forEach((i) => {
+      if (!i.doneAt) return;
+      ledger.push({
+        id: ledgerId(key, i.taskId), at: i.doneAt,
+        delta: i.points || 0, reason: i.title || '',
+      });
+    });
+  });
+  (p.archive || []).forEach((m) => {
+    if (!m.points) return;
+    ledger.push({ id: `arch:${m.month}`, at: 0, delta: m.points, reason: `${m.month} 합계` });
+  });
+  return { ...p, schema: 2, ledger };
+}
 
 /*
  * 저장소 어댑터. 백엔드가 넷(NONE/FIREBASE/JSONBIN/HTTP)이지만 하는 일은 같다.
@@ -293,7 +339,7 @@ export class Repo {
     if (this.settings.workerId) ids.add(this.settings.workerId);
     const next = {};
     ids.forEach((id) => {
-      next[id] = { ...emptyProgress(id), ...load(KEYS.progress + id, {}) };
+      next[id] = ensureLedger({ ...emptyProgress(id), ...load(KEYS.progress + id, {}) });
     });
     this.progress = next;
   }
@@ -351,17 +397,33 @@ export class Repo {
       doneAt: t.id !== taskId ? t.doneAt : (t.doneAt ? null : now),
       points: t.points,
     }));
-    this.writeDay(workerId, date, { date: dateKey(date), items, updatedAt: now });
+    const hit = items.find((i) => i.taskId === taskId);
+
+    // 기록과 원장을 한 번에 저장한다. 따로 저장하면 그사이 동기화가 끼어들어
+    // 둘이 어긋날 수 있다.
+    const cur = ensureLedger(this.progressOf(workerId));
+    const id = ledgerId(dateKey(date), taskId);
+    const rest = (cur.ledger || []).filter((e) => e.id !== id);
+    this.saveProgress(workerId, {
+      ...cur,
+      days: { ...cur.days, [dateKey(date)]: { date: dateKey(date), items, updatedAt: now } },
+      // 껐으면 0 으로 덮는다. 지우지 않는 이유는 원장 설명 참고.
+      ledger: [...rest, {
+        id, at: now,
+        delta: hit && hit.doneAt ? (hit.points || 0) : 0,
+        reason: hit ? hit.title : '',
+      }],
+    });
   }
 
   writeDay(workerId, date, log) {
-    const cur = this.progressOf(workerId);
-    const updated = this.pruned({
-      ...cur,
-      workerId,
-      updatedAt: Date.now(),
-      days: { ...cur.days, [dateKey(date)]: log },
-    });
+    const cur = ensureLedger(this.progressOf(workerId));
+    this.saveProgress(workerId, { ...cur, days: { ...cur.days, [dateKey(date)]: log } });
+  }
+
+  /** 진행 기록을 저장하는 유일한 길목. 정리·저장·알림·업로드를 함께 한다. */
+  saveProgress(workerId, next) {
+    const updated = this.pruned({ ...next, workerId, updatedAt: Date.now() });
     this.progress = { ...this.progress, [workerId]: updated };
     save(KEYS.progress + workerId, updated);
     this.emit();
@@ -434,12 +496,35 @@ export class Repo {
     return this.statFor(workerId, first, lastDay);
   }
 
+  /** 지금 잔액. 원장에 적힌 것을 모두 더한 값이다. */
   lifetimePoints(workerId) {
-    const p = this.progressOf(workerId);
-    const fromDays = Object.values(p.days || {})
-      .reduce((s, log) => s + (log.items || []).filter((i) => i.doneAt).reduce((a, i) => a + (i.points || 0), 0), 0);
-    const fromArchive = (p.archive || []).reduce((s, m) => s + (m.points || 0), 0);
-    return fromDays + fromArchive;
+    return (this.progressOf(workerId).ledger || []).reduce((s, e) => s + (e.delta || 0), 0);
+  }
+
+  /** 원장 최근 순. 설정 화면에서 내역을 보여줄 때 쓴다. */
+  ledgerOf(workerId, limit = 50) {
+    return [...(this.progressOf(workerId).ledger || [])]
+      .filter((e) => e.delta)
+      .sort((a, b) => (b.at || 0) - (a.at || 0))
+      .slice(0, limit);
+  }
+
+  /**
+   * 원장에 한 줄 남긴다. 같은 id 가 있으면 그 줄을 고친다.
+   * 체크를 껐을 때는 delta 0 으로 덮어 "적립이 없던 일이 됐다"를 남긴다.
+   */
+  postLedger(workerId, entry) {
+    const cur = ensureLedger(this.progressOf(workerId));
+    const rest = (cur.ledger || []).filter((e) => e.id !== entry.id);
+    this.saveProgress(workerId, { ...cur, ledger: [...rest, entry] });
+  }
+
+  /** 관리자가 손으로 더하거나 뺀다. 상을 주거나 모은 것을 쓸 때. */
+  adjustPoints(workerId, delta, reason) {
+    if (!delta) return;
+    this.postLedger(workerId, {
+      id: newId('adj'), at: Date.now(), delta, reason: reason || '직접 조정',
+    });
   }
 
   /** 할 일이 없던 날은 건너뛰고, 아직 진행 중인 오늘은 연속을 끊지 않는다. */
@@ -892,7 +977,7 @@ export function mergePlans(a, b) {
   return out;
 }
 
-function mergeProgress(a, b) {
+export function mergeProgress(a, b) {
   const days = { ...a.days };
   Object.entries(b.days || {}).forEach(([k, v]) => {
     const cur = days[k];
@@ -905,12 +990,23 @@ function mergeProgress(a, b) {
       ? { month: m.month, done: Math.max(prev.done, m.done), total: Math.max(prev.total, m.total), points: Math.max(prev.points || 0, m.points || 0) }
       : { ...m };
   });
+  // 원장은 id 로 합친다. 같은 사건은 나중에 적힌 쪽을 따르고, 한쪽에만 있으면
+  // 그대로 남긴다. 문서 전체를 늦게 올린 쪽으로 덮으면 다른 기기가 그사이
+  // 적립한 줄이 사라진다.
+  const byId = {};
+  [...(a.ledger || []), ...(b.ledger || [])].forEach((e) => {
+    if (!e || !e.id) return;
+    const prev = byId[e.id];
+    if (!prev || (e.at || 0) >= (prev.at || 0)) byId[e.id] = e;
+  });
+
   return {
     ...a,
     workerId: a.workerId || b.workerId,
     updatedAt: Math.max(a.updatedAt || 0, b.updatedAt || 0),
     days,
     archive: Object.values(byMonth).sort((x, y) => x.month.localeCompare(y.month)),
+    ledger: Object.values(byId).sort((x, y) => (x.at || 0) - (y.at || 0)),
   };
 }
 
