@@ -529,6 +529,9 @@ function viewSettings(isManager) {
     <div class="card"><h3>이 기기</h3>
       <p>${s.role === 'MANAGER' ? '관리자용으로 설정됨' : esc(repo.workerName(s.workerId)) + '의 기기'}</p>
       <div class="muted">웹 ${esc(BUILD)}${shell.present ? ' · 앱 ' + esc(shell.version()) : ''}</div>
+      <p class="muted" style="margin:8px 0 0">
+        앱을 새로 받아야 할 때는 <a href="install.html" target="_blank" rel="noopener">설치 페이지</a>에서
+        바로 받을 수 있습니다. 화면과 규칙은 웹에 있어서 대부분은 다시 받을 필요가 없습니다.</p>
       ${broken.length ? `<p class="muted err" style="margin-top:10px">이전 저장 형식을 읽지 못해 새로 시작했습니다.
         팀 저장소를 쓰고 있으면 잠시 뒤 자료가 다시 내려옵니다.
         <button class="plain" data-act="clear-broken">알림 지우기</button></p>` : ''}

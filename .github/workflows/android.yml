@@ -5,8 +5,9 @@ on:
     branches: ["**"]
   workflow_dispatch:
 
+# 빌드한 APK 를 릴리스로 올리려면 쓰기 권한이 필요하다.
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -103,6 +104,37 @@ jobs:
           path: out/*
           if-no-files-found: error
           retention-days: 90
+
+      # ---------------------------------------------------------------------
+      # 받기 쉽게 릴리스로 올린다.
+      #
+      # Actions 아티팩트는 받기가 번거롭다. 깃허브에 로그인해야 하고, zip 으로
+      # 묶여 나와서 폰에서는 압축까지 풀어야 한다. 가족에게 "여기 눌러"라고
+      # 보낼 수 있는 주소가 아니다.
+      #
+      # 릴리스에 붙이면 로그인 없이 바로 받는 고정 주소가 생긴다.
+      #   https://github.com/<소유자>/<저장소>/releases/latest/download/henny.apk
+      # 파일 이름을 늘 henny.apk 로 두는 것이 핵심이다. 이름이 바뀌면 위 주소가
+      # 깨진다. 그래서 버전은 태그와 제목에만 넣는다.
+      #
+      # main 에서, 진짜 업로드 키로 서명됐을 때만 올린다. 일회용 키로 서명한
+      # APK 는 덮어 설치가 안 되므로 받아 봐야 소용이 없다.
+      - name: Publish release
+        if: github.ref == 'refs/heads/main' && steps.key.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk henny.apk
+          tag="v${HENNY_VERSION_NAME}"
+          gh release create "$tag" henny.apk \
+            --title "헨니 체크 ${HENNY_VERSION_NAME}" \
+            --notes "폰에서 아래 henny.apk 를 눌러 받으세요.
+
+          받는 방법과 설치가 막힐 때: https://nohkwangsun.github.io/henny/install.html
+
+          이 빌드에 담긴 변경: ${GITHUB_SHA::7}" \
+            --latest
+          echo "받는 주소: https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/henny.apk"
 
       # Play 콘솔에서 크래시 로그를 사람이 읽을 수 있게 하려면 매핑 파일이 필요하다.
       - name: Upload R8 mapping
