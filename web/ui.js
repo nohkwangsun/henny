@@ -1132,6 +1132,35 @@ draw();
 repo.startLive();
 publishSchedule(repo);
 
+/**
+ * 상태바와 겹치지 않게 위쪽을 민다. 껍데기 버전에 상관없이 스스로 판단한다.
+ *
+ * 이 문제로 세 번 헛돌았다. 껍데기가 미는 판이 있고 안 미는 판이 있는데,
+ * 웹은 어느 쪽인지 모른 채 한쪽만 가정했기 때문이다. 그래서 이제 웹이 직접
+ * 재서 판단한다. 껍데기를 새로 설치하지 않아도 맞는다.
+ *
+ * 판단 기준: 껍데기가 이미 밀어 줬다면 화면 전체 높이보다 웹에 주어진
+ * 높이가 그만큼 작다. 차이가 거의 없으면 아무도 안 민 것이므로 웹이 민다.
+ */
+function fixTopInset() {
+  if (!shell.present) return;   // 브라우저는 env() 가 알아서 한다
+  try {
+    const screenH = window.screen?.height || 0;
+    const gap = Math.round(screenH - window.innerHeight);
+    // 이미 밀려 있다. 여기서 또 밀면 위에 빈 띠가 두 번 생긴다.
+    if (gap > 24) return;
+
+    const said = shell.insets();
+    // 껍데기가 알려 주면 그 값. 옛 껍데기는 안 알려 주므로 안전한 최소값을 쓴다.
+    const top = (said && said.top > 0) ? said.top : 28;
+    document.documentElement.style.setProperty('--inset-top', top + 'px');
+  } catch (_) { /* 못 재면 그냥 둔다 */ }
+}
+
+fixTopInset();
+// 회전하면 값이 달라진다
+window.addEventListener('resize', fixTopInset);
+
 // 새 앱이 나왔는지 확인한다. 실패하면 조용히 넘어간다.
 // 화면을 먼저 그린 뒤에 하므로 첫 화면이 늦어지지 않는다.
 checkUpdate().then((found) => { if (found) { update = found; draw(); } }).catch(() => {});

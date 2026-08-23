@@ -477,6 +477,66 @@ await check('최신이면 아무것도 안 뜬다', async () => {
   await dev.close();
 });
 
+// 껍데기 판마다 여백 처리가 달라 세 번 헛돌았다. 세 경우를 다 못 박는다.
+async function topPad(page) {
+  return page.evaluate(() => getComputedStyle(document.body).paddingTop);
+}
+
+await check('껍데기가 안 밀어 줬으면 웹이 민다', async () => {
+  // v1.0.46 처럼 껍데기가 아무것도 안 미는 판. 예전에는 여기서 겹쳤다.
+  const dev = await browser.newContext({ viewport: { width: 412, height: 915 } });
+  await dev.route(FAKE_DB + '/**', serveDb);
+  await dev.addInitScript(() => {
+    // 화면 전체 높이와 웹에 주어진 높이가 같다 = 아무도 안 밀었다
+    Object.defineProperty(window.screen, 'height', { get: () => window.innerHeight });
+    window.HennyShell = {
+      version: () => '1.0.46', canNotify: () => true,
+      setSchedule: () => {}, legacyData: () => '',
+      insets: () => JSON.stringify({ top: 40, bottom: 16, measured: true }),
+    };
+  });
+  const pg = await dev.newPage();
+  await pg.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
+  await pg.waitForTimeout(400);
+  if (await topPad(pg) !== '40px') throw new Error(`위 여백이 ${await topPad(pg)} 다 (40px 여야 함)`);
+  await dev.close();
+});
+
+await check('껍데기가 이미 밀었으면 웹은 안 민다', async () => {
+  // v1.0.45/47 처럼 껍데기가 WebView 를 미는 판. 여기서 또 밀면 띠가 두 번.
+  const dev = await browser.newContext({ viewport: { width: 412, height: 915 } });
+  await dev.route(FAKE_DB + '/**', serveDb);
+  await dev.addInitScript(() => {
+    // 껍데기가 민 만큼 웹에 주어진 높이가 작다
+    Object.defineProperty(window.screen, 'height', { get: () => window.innerHeight + 64 });
+    window.HennyShell = {
+      version: () => '1.0.47', canNotify: () => true,
+      setSchedule: () => {}, legacyData: () => '',
+      insets: () => JSON.stringify({ top: 40, bottom: 24, measured: true }),
+    };
+  });
+  const pg = await dev.newPage();
+  await pg.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
+  await pg.waitForTimeout(400);
+  if (await topPad(pg) !== '0px') throw new Error(`위 여백이 ${await topPad(pg)} 다 (0px 여야 함)`);
+  await dev.close();
+});
+
+await check('아주 옛 껍데기라 알려주지도 않으면 최소값으로 민다', async () => {
+  const dev = await browser.newContext({ viewport: { width: 412, height: 915 } });
+  await dev.route(FAKE_DB + '/**', serveDb);
+  await dev.addInitScript(() => {
+    Object.defineProperty(window.screen, 'height', { get: () => window.innerHeight });
+    window.HennyShell = { version: () => '1.0.20', canNotify: () => true,
+      setSchedule: () => {}, legacyData: () => '' };   // insets() 없음
+  });
+  const pg = await dev.newPage();
+  await pg.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
+  await pg.waitForTimeout(400);
+  if (await topPad(pg) !== '28px') throw new Error(`위 여백이 ${await topPad(pg)} 다 (28px 여야 함)`);
+  await dev.close();
+});
+
 await check('껍데기가 알려준 여백만큼 화면이 밀린다', async () => {
   // 껍데기가 --inset-top 을 넣어 주면 본문이 그만큼 내려가야 한다.
   // 안드로이드 WebView 의 env(safe-area-inset-top) 은 상태바를 안 알려주므로
@@ -507,22 +567,6 @@ await check('껍데기가 알려준 여백만큼 화면이 밀린다', async () 
     return h ? Math.round(h.getBoundingClientRect().top) : -1;
   });
   if (top < 42) throw new Error(`제목이 ${top}px 에서 시작한다. 상태바(42px) 안으로 들어갔다`);
-  await dev.close();
-});
-
-await check('껍데기가 값을 안 주면 밀지 않는다', async () => {
-  // 옛 껍데기는 WebView 자체를 밀어 둔다. 그때 웹까지 밀면 두 번 밀린다.
-  const dev = await browser.newContext({ viewport: { width: 412, height: 915 } });
-  await dev.route(FAKE_DB + '/**', serveDb);
-  await dev.addInitScript(() => {
-    window.HennyShell = { version: () => '1.0.41', canNotify: () => true,
-      setSchedule: () => {}, legacyData: () => '' };
-  });
-  const pg = await dev.newPage();
-  await pg.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
-  await pg.waitForTimeout(300);
-  const pad = await pg.evaluate(() => getComputedStyle(document.body).paddingTop);
-  if (pad !== '0px') throw new Error(`위쪽 여백이 ${pad} 다 (0px 여야 함)`);
   await dev.close();
 });
 
