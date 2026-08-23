@@ -681,6 +681,45 @@ await check('받기 통로가 없는 옛 껍데기에서는 주소를 띄운다'
   await dev.close();
 });
 
+await check('진행 링의 글씨가 링 위로 올라타지 않는다', async () => {
+  // 작은 링에서 글씨가 가운데 흰 자리를 넘어 청록 선에 겹쳐 안 읽혔다.
+  // 눈으로만 보면 또 놓치므로, 글씨 상자가 흰 원 안에 들어가는지 좌표로 잰다.
+  const dev = await browser.newContext({ viewport: { width: 412, height: 915 } });
+  await dev.route(FAKE_DB + '/**', serveDb);
+  const pg = await dev.newPage();
+  await pg.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
+
+  const bad = await pg.evaluate(async () => {
+    const m = await import('./ui.js');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const out = [];
+    // 실제로 쓰는 두 크기와, 글자가 가장 많이 늘어나는 경우까지 본다.
+    const cases = [[1, 1, 86], [0, 1, 86], [10, 12, 86], [1, 1, 132], [10, 12, 132], [0, 0, 86]];
+    for (const [done, total, size] of cases) {
+      host.innerHTML = m.ring(done, total, '#0f6f60', size);
+      const box = host.querySelector('.ring').getBoundingClientRect();
+      const txt = host.querySelector('.inner').getBoundingClientRect();
+      const w = Math.max(7, Math.round(size * 0.1));
+      const inner = (size - 2 * w) / 2;          // 흰 자리의 반지름
+      const cx = box.left + box.width / 2;
+      const cy = box.top + box.height / 2;
+      // 글씨 상자 네 모서리가 모두 흰 원 안에 있어야 한다.
+      for (const [x, y] of [[txt.left, txt.top], [txt.right, txt.top],
+                            [txt.left, txt.bottom], [txt.right, txt.bottom]]) {
+        if (Math.hypot(x - cx, y - cy) > inner) {
+          out.push(`${done}/${total} @${size}px 글씨가 흰 자리를 넘었다`);
+          break;
+        }
+      }
+    }
+    host.remove();
+    return out;
+  });
+  if (bad.length) throw new Error(bad.join(' / '));
+  await dev.close();
+});
+
 await check('앱에 넘길 알람 일정이 만들어진다', async () => {
   // 검사가 요일과 시각에 휘둘리지 않도록 입력을 직접 만든다.
   //

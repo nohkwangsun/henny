@@ -63,24 +63,42 @@ function toast(text) {
   setTimeout(() => el.remove(), 2600);
 }
 
-function ring(done, total, accent, size = 132) {
-  const r = (size - 14) / 2;
+/**
+ * 진행 링.
+ *
+ * 선 굵기(14)와 글씨 크기(24)를 링 크기와 무관하게 고정해 두었던 것이
+ * 문제였다. 작은 링(86px)에서는 가운데 흰 자리가 지름 58px 밖에 안 남는데
+ * 거기에 24px 글씨와 회색 퍼센트 줄을 같이 넣으니, 글씨가 흰 자리를 넘어
+ * 청록 선 위로 올라탔다. 회색 글씨가 진한 청록에 겹쳐 안 읽히던 것이
+ * "시인성이 떨어진다"의 정체다.
+ *
+ * 굵기와 글씨를 모두 크기에 비례하게 바꾸고, 글씨는 실제로 들어갈 자리를
+ * 재서 정한다. 글자 수가 늘어도(10 / 12) 넘지 않는다.
+ *
+ * 퍼센트 줄은 뺐다. 링 자체가 이미 비율이고, 관리자 카드에는 바로 옆에
+ * "N개 남음"까지 있다. 좁은 자리에 같은 말을 세 번 넣느라 셋 다 안 읽혔다.
+ */
+export function ring(done, total, accent, size = 132) {
+  const w = Math.max(7, Math.round(size * 0.1));
+  const r = (size - w) / 2;
   const c = 2 * Math.PI * r;
   const ratio = total === 0 ? 0 : done / total;
+  const label = total === 0 ? '없음' : `${done} / ${total}`;
+  // 가운데 흰 자리의 지름에서, 글씨가 놓이는 높이만큼 좁아지는 것을 감안한
+  // 실폭(0.86)을 잡고 글자 수로 나눈다. 0.55em 은 굵은 숫자의 평균 폭이다.
+  const fit = ((size - 2 * w) * 0.86) / (label.length * 0.55);
+  const fs = Math.max(12, Math.min(Math.round(size * 0.26), Math.round(fit)));
   return `
     <div class="ring" style="width:${size}px;height:${size}px">
       <svg width="${size}" height="${size}">
         <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none"
-                stroke="var(--track)" stroke-width="14"/>
+                stroke="var(--track)" stroke-width="${w}"/>
         <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none"
-                stroke="${accent}" stroke-width="14" stroke-linecap="round"
+                stroke="${accent}" stroke-width="${w}" stroke-linecap="round"
                 stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - ratio)}"
                 style="transition:stroke-dashoffset .45s ease"/>
       </svg>
-      <div class="inner">
-        <b>${done} / ${total}</b>
-        <div class="muted">${total === 0 ? '없음' : Math.round(ratio * 100) + '%'}</div>
-      </div>
+      <div class="inner" style="font-size:${fs}px">${label}</div>
     </div>`;
 }
 

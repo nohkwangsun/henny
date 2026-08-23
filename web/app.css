@@ -159,8 +159,12 @@ label.field > span { display: block; font-size: 13px; color: var(--muted); margi
 /* 진행 링 */
 .ring { display: grid; place-items: center; position: relative; }
 .ring svg { transform: rotate(-90deg); }
-.ring .inner { position: absolute; text-align: center; }
-.ring .inner b { font-size: 24px; }
+/* 글씨 크기는 링 크기에 맞춰 ui.js 가 정한다. 여기서 고정하면 작은 링에서
+   글씨가 가운데 흰 자리를 넘어 링 위로 올라탄다. */
+.ring .inner {
+  position: absolute; text-align: center; line-height: 1;
+  font-weight: 700; letter-spacing: -0.01em; color: var(--ink);
+}
 
 .pills { display: flex; gap: 10px; }
 .pill {
