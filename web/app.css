@@ -1,24 +1,38 @@
 :root {
-  --teal: #2e7d6f;
-  --teal-deep: #1f5a50;
-  --amber: #e07a3e;
-  --bg: #f7f3ee;
+  /* 주색. 예전 #2e7d6f 은 따뜻한 베이지 바탕 위에서 탁해 보였다. 더 깊게. */
+  --teal: #0f6f60;
+  --teal-deep: #0a4f44;
+  /* 배지. 예전 주황은 바탕과 붙어 안 읽혔다. 옅은 판 위에 진한 글씨로. */
+  --amber: #8a4b10;
+  --amber-bg: #f6ecdf;
+  /* 바탕을 중립으로. 노랑 기운을 빼야 청록이 제 색으로 보인다. */
+  --bg: #eef0ee;
   --surface: #ffffff;
-  --ink: #1e2321;
-  --muted: #5a5651;
-  --line: #e6e0d9;
-  --track: #ede7e0;
+  --ink: #191c1b;
+  --muted: #5b625f;
+  --line: #e3e6e4;
+  --track: #e2e5e3;
   --error: #b3261e;
-  --w0: #2e7d6f;
-  --w1: #5a67b8;
-  --w2: #c2603e;
-  --w3: #7a5aa8;
+  /* 작업자 구분색. 색상만 다르고 밝기·채도는 같은 단으로 맞췄다.
+     예전에는 제각각이라 나란히 두면 알록달록해 보였다. */
+  --w0: #0f6f60;
+  --w1: #3a5aa6;
+  --w2: #a65030;
+  --w3: #6b4795;
+
+  /* 모서리는 세 단계만 쓴다. 예전에는 12·14·16·18·20·22 가 섞여
+     그때그때 정한 티가 났다. */
+  --r-sm: 12px;
+  --r-md: 18px;
+  --r-pill: 999px;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #14171a; --surface: #1e2226; --ink: #e8e5e1; --muted: #b3aea8;
-    --line: #2c3136; --track: #2c3136;
-    --w0: #7ed0bf; --w1: #a9b2ec; --w2: #f0a672; --w3: #c4a9e8;
+    --bg: #121614; --surface: #1b201e; --ink: #e6e9e7; --muted: #a3aca8;
+    --line: #2a302d; --track: #2a302d;
+    --teal: #6fcbbb; --teal-deep: #8fdccd;
+    --amber: #e9b985; --amber-bg: #2b2318;
+    --w0: #6fcbbb; --w1: #9db0ee; --w2: #e9a17c; --w3: #bfa3e6;
   }
 }
 
@@ -67,12 +81,12 @@ h2 { font-size: 20px; margin: 0 0 4px; font-weight: 600; }
 .center { text-align: center; }
 
 .card {
-  background: var(--surface); border-radius: 20px; padding: 16px; margin: 12px 0;
+  background: var(--surface); border-radius: var(--r-md); padding: 16px; margin: 12px 0;
 }
 .card h3 { margin: 0 0 10px; font-size: 17px; font-weight: 600; }
 
 button {
-  font: inherit; cursor: pointer; border-radius: 999px; border: 1px solid transparent;
+  font: inherit; cursor: pointer; border-radius: var(--r-pill); border: 1px solid transparent;
   padding: 10px 18px; background: var(--teal); color: #fff; font-weight: 600;
 }
 button:disabled { opacity: .5; cursor: default; }
@@ -82,12 +96,15 @@ button.danger { background: transparent; color: var(--error); border: none; padd
 button.danger.solid { background: var(--error); color: #fff; }
 button.icon {
   background: transparent; color: var(--muted); border: none;
-  padding: 8px; font-size: 20px; line-height: 1; border-radius: 999px;
+  padding: 8px; font-size: 20px; line-height: 1; border-radius: var(--r-pill);
 }
 button.wide { width: 100%; }
+/* 좁은 화면에서 글씨가 두 줄로 깨지지 않게. 길면 줄이는 편이 낫다. */
+button { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+button.wide, .modal .actions button { white-space: normal; }
 
 input, textarea, select {
-  font: inherit; width: 100%; padding: 12px 14px; border-radius: 12px;
+  font: inherit; width: 100%; padding: 12px 14px; border-radius: var(--r-sm);
   border: 1px solid var(--line); background: var(--surface); color: var(--ink);
 }
 label.field { display: block; }
@@ -96,11 +113,11 @@ label.field > span { display: block; font-size: 13px; color: var(--muted); margi
 /* 작업 한 줄 — 크게, 한 번에 눌리게 */
 .task {
   display: flex; align-items: center; gap: 14px; width: 100%; text-align: left;
-  background: var(--surface); border: none; border-radius: 18px;
+  background: var(--surface); border: none; border-radius: var(--r-md);
   padding: 18px 16px; margin-bottom: 10px; color: var(--ink); font-weight: 500;
 }
 .task .box {
-  width: 34px; height: 34px; border-radius: 999px; flex: 0 0 auto;
+  width: 34px; height: 34px; border-radius: var(--r-pill); flex: 0 0 auto;
   background: var(--track); display: grid; place-items: center;
   color: #fff; font-size: 19px; font-weight: 700;
 }
@@ -110,7 +127,11 @@ label.field > span { display: block; font-size: 13px; color: var(--muted); margi
 .task .title { font-size: 18px; }
 .task .pts { font-weight: 700; font-size: 17px; color: var(--muted); }
 .task.done .pts { color: var(--accent); }
-.badge { font-size: 12px; font-weight: 700; color: var(--amber); }
+.badge {
+  font-size: 11px; font-weight: 700; color: var(--amber);
+  background: var(--amber-bg); padding: 2px 7px; border-radius: 6px;
+  margin-right: 6px; vertical-align: 1px;
+}
 
 /* 진행 링 */
 .ring { display: grid; place-items: center; position: relative; }
@@ -120,7 +141,7 @@ label.field > span { display: block; font-size: 13px; color: var(--muted); margi
 
 .pills { display: flex; gap: 10px; }
 .pill {
-  flex: 1; border-radius: 16px; padding: 12px 8px; text-align: center;
+  flex: 1; border-radius: var(--r-sm); padding: 12px 8px; text-align: center;
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 .pill b { display: block; font-size: 19px; color: var(--accent); }
@@ -129,7 +150,7 @@ label.field > span { display: block; font-size: 13px; color: var(--muted); margi
 /* 주간 막대 */
 .bars { display: flex; justify-content: space-evenly; align-items: flex-end; }
 .bars .col { text-align: center; }
-.bars .bar { width: 22px; height: 84px; border-radius: 8px; background: var(--track);
+.bars .bar { width: 22px; height: 84px; border-radius: var(--r-sm); background: var(--track);
   display: flex; align-items: flex-end; overflow: hidden; }
 .bars .fill { width: 100%; border-radius: 8px; background: var(--accent); }
 .bars small { display: block; margin-top: 6px; color: var(--muted); font-size: 12px; }
@@ -137,7 +158,7 @@ label.field > span { display: block; font-size: 13px; color: var(--muted); margi
 /* 월간 격자 */
 .dots { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
 .dots div {
-  aspect-ratio: 1; border-radius: 8px; background: var(--track);
+  aspect-ratio: 1; border-radius: var(--r-sm); background: var(--track);
   display: grid; place-items: center; font-size: 12px; color: var(--muted);
 }
 .dots div.full { background: var(--accent); color: #fff; }
@@ -153,12 +174,13 @@ nav.tabs button {
   border-radius: 0; padding: 10px 4px 12px; font-size: 12px; font-weight: 600;
 }
 nav.tabs button.on { color: var(--teal); }
-nav.tabs .ico { display: block; font-size: 19px; margin-bottom: 2px; }
+nav.tabs svg { display: block; margin: 0 auto 3px; width: 22px; height: 22px; }
+nav.tabs button { transition: color .15s; }
 
 /* 칩 */
 .chips { display: flex; gap: 8px; flex-wrap: wrap; }
 .chip {
-  border-radius: 14px; padding: 10px 16px; background: var(--track);
+  border-radius: var(--r-pill); padding: 10px 16px; background: var(--track);
   color: var(--muted); border: none; font-weight: 600; font-size: 14px;
 }
 .chip.on { background: var(--accent); color: #fff; }
@@ -167,7 +189,7 @@ nav.tabs .ico { display: block; font-size: 19px; margin-bottom: 2px; }
 /* 손가락 목표는 44px 아래로 내려가면 옆 요일이 눌린다. 폭은 일곱 개가
    좁은 화면에도 들어가야 해서 남는 자리를 나눠 갖는다. */
 .days button {
-  flex: 1; min-width: 0; height: 44px; padding: 0; border-radius: 999px;
+  flex: 1; min-width: 0; height: 44px; padding: 0; border-radius: var(--r-pill);
   background: var(--track); color: var(--muted); font-size: 14px;
 }
 .days button.on { background: var(--teal); color: #fff; }
@@ -178,7 +200,7 @@ nav.tabs .ico { display: block; font-size: 19px; margin-bottom: 2px; }
 /* 눌러서 고칠 수 있는 줄. 예전에는 아무 표시가 없어 안내 문구를 읽어야만
    눌러도 된다는 것을 알 수 있었다. */
 .tappable {
-  cursor: pointer; border-radius: 12px; margin: 0 -8px; padding: 8px;
+  cursor: pointer; border-radius: var(--r-sm); margin: 0 -8px; padding: 8px;
   display: flex; align-items: center; gap: 8px;
 }
 .tappable::after {
@@ -204,7 +226,7 @@ nav.tabs .ico { display: block; font-size: 19px; margin-bottom: 2px; }
   display: flex; padding: 16px; overflow-y: auto;
 }
 .modal {
-  background: var(--surface); border-radius: 22px; padding: 20px;
+  background: var(--surface); border-radius: var(--r-md); padding: 20px;
   width: 100%; max-width: 420px; margin: auto;
 }
 .modal h3 { margin: 0 0 14px; font-size: 19px; }
@@ -293,3 +315,22 @@ a.btn {
   border-radius: 999px; white-space: nowrap; flex: 0 0 auto;
 }
 a.btn:active { opacity: .85; }
+
+/* 오늘 진행 — 큰 원 대신 가는 막대 한 줄. 목록을 밀어내지 않는다. */
+.progress { margin-bottom: 14px; }
+.progress .bar {
+  height: 6px; border-radius: var(--r-pill); background: var(--track); overflow: hidden;
+}
+.progress .fill {
+  height: 100%; border-radius: var(--r-pill); background: var(--accent);
+  transition: width .4s ease;
+}
+
+/* 접어 둔 카드 */
+details.card > summary {
+  list-style: none; cursor: pointer; font-size: 15px; font-weight: 600;
+  display: flex; align-items: center; justify-content: space-between;
+}
+details.card > summary::-webkit-details-marker { display: none; }
+details.card > summary::after { content: '⌄'; color: var(--muted); font-size: 18px; }
+details.card[open] > summary::after { content: '⌃'; }

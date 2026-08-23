@@ -283,7 +283,6 @@ function viewWorker() {
   const tasks = repo.tasksFor(s.workerId, today);
   const done = tasks.filter((t) => t.doneAt);
   const earned = done.reduce((x, t) => x + t.points, 0);
-  const offered = tasks.reduce((x, t) => x + t.points, 0);
   const week = repo.weekStat(s.workerId);
 
   const headline = tasks.length === 0 ? '오늘 배정된 작업이 없습니다'
@@ -291,7 +290,7 @@ function viewWorker() {
     : `${tasks.length - done.length}개 남았습니다`;
 
   return `
-    <div class="spread" style="margin-bottom:6px">
+    <div class="spread" style="margin-bottom:14px">
       <div class="grow">
         <h1>${esc(worker?.name || '나')}</h1>
         <div class="muted">${today.getMonth() + 1}월 ${today.getDate()}일 ${dayName(today)}요일 · ${esc(syncLine())}</div>
@@ -300,32 +299,44 @@ function viewWorker() {
       <button class="icon" data-act="open-settings" title="설정">⚙</button>
     </div>
 
-    <div class="center" style="margin:14px 0">${ring(done.length, tasks.length, accent)}</div>
-    <div class="center" style="font-weight:600;margin-bottom:14px;color:${done.length === tasks.length && tasks.length ? accent : 'inherit'}">${esc(headline)}</div>
-    ${pills([['오늘 모은 마일리지', earned + 'P'], ['오늘 걸린 마일리지', offered + 'P']], accent)}
-    <div style="height:16px"></div>
+    <!-- 오늘 할 일을 맨 위에 둔다.
+         예전에는 큰 진행 링과 숫자 칸이 먼저 오고 목록이 그 아래였다.
+         매일 앱을 여는 이유는 목록인데 매번 지나쳐야 했다. -->
+    <div class="progress" style="--accent:${accent}">
+      <div class="bar"><div class="fill" style="width:${tasks.length ? Math.round((done.length / tasks.length) * 100) : 0}%"></div></div>
+      <div class="spread" style="margin-top:8px">
+        <b style="color:${done.length === tasks.length && tasks.length ? accent : 'inherit'}">${esc(headline)}</b>
+        <span class="muted">${done.length} / ${tasks.length}</span>
+      </div>
+    </div>
 
-    ${tasks.map((t) => `
+    ${tasks.length === 0
+      ? '<div class="card center muted" style="padding:28px 16px">오늘은 배정된 작업이 없습니다.</div>'
+      : tasks.map((t) => `
       <button class="task ${t.doneAt ? 'done' : ''}" style="--accent:${accent}" data-act="toggle" data-id="${t.id}">
         <span class="box">${t.doneAt ? '✓' : ''}</span>
         <span class="grow">
-          ${t.isAssignment ? '<span class="badge">임시 작업</span><br>' : ''}
-          <span class="title">${esc(t.title)}</span>
+          <span class="title">${t.isAssignment ? '<span class="badge">임시</span>' : ''}${esc(t.title)}</span>
           ${t.dueMinute != null ? `<br><span class="muted">${minuteToText(t.dueMinute)}까지</span>` : ''}
         </span>
         <span class="pts ${t.points < 0 ? 'minus' : ''}">${t.points > 0 ? '+' : ''}${t.points}P</span>
       </button>`).join('')}
 
     <div class="card" style="--accent:${accent}">
-      <h3>이번 주</h3>
-      ${bars(week.perDay, accent)}
-      <div style="height:14px"></div>
-      ${pills([['달성률', week.rate + '%'], ['이번 주', week.points + 'P'], ['연속', repo.streak(s.workerId) + '일']], accent)}
+      ${pills([['오늘 모음', earned + 'P'], ['이번 주', week.points + 'P'], ['연속', repo.streak(s.workerId) + '일']], accent)}
       <div class="spread tappable" style="margin-top:14px" data-act="ledger" data-id="${esc(s.workerId)}">
         <span class="muted">지금까지 모은 마일리지</span>
         <b style="font-size:20px;color:${accent}">${repo.lifetimePoints(s.workerId)}P</b>
       </div>
-    </div>`;
+    </div>
+
+    <details class="card" style="--accent:${accent}">
+      <summary>이번 주 자세히</summary>
+      <div style="height:12px"></div>
+      ${bars(week.perDay, accent)}
+      <div style="height:12px"></div>
+      <div class="muted center">달성률 ${week.rate}%</div>
+    </details>`;
 }
 
 // -------------------------------------------------------------- 관리자 화면
@@ -350,17 +361,17 @@ function viewManagerToday() {
           <div class="grow">
             <h2>${esc(w.name)}</h2>
             <div class="muted">${tasks.length === 0 ? '오늘 배정된 작업이 없습니다'
-              : done.length === tasks.length ? '오늘 작업 모두 완료' : `${tasks.length - done.length}개 남음`}</div>
-            ${tasks.length ? `<div style="color:${accent};font-weight:700;font-size:13px">마일리지 ${earned} / ${offered} P</div>` : ''}
+              : done.length === tasks.length ? '오늘 작업 모두 완료' : `${tasks.length - done.length}개 남음`}${
+              tasks.length ? ` · ${earned}/${offered}P` : ''}</div>
           </div>
-          ${ring(done.length, tasks.length, accent, 86)}
+          ${tasks.length ? ring(done.length, tasks.length, accent, 76) : ''}
         </div>
         <div style="height:10px"></div>
         ${tasks.map((t) => `<div class="row mrow" style="padding:2px 0">
           <button class="mcheck" data-act="mgr-toggle" data-id="${w.id}:${t.id}"
                   title="${t.doneAt ? '완료 해제' : '완료로 표시'}">
             <span class="dot ${t.doneAt ? 'on' : ''}" style="--accent:${accent}">${t.doneAt ? '✓' : ''}</span>
-            <span class="grow" style="${t.doneAt ? 'color:var(--muted);text-decoration:line-through' : ''}">${esc(t.title)}${t.isAssignment ? ' (임시)' : ''}</span>
+            <span class="grow" style="${t.doneAt ? 'color:var(--muted);text-decoration:line-through' : ''}">${t.isAssignment ? '<span class="badge">임시</span>' : ''}${esc(t.title)}</span>
             <span class="muted" style="font-size:12px">${t.doneAt ? doneAtText(t.doneAt) + ' 완료'
               : t.dueMinute != null ? minuteToText(t.dueMinute) + '까지' : ''}</span>
             <b style="font-size:13px;color:${t.doneAt ? accent : (t.points < 0 ? 'var(--error)' : 'var(--muted)')}">${t.points > 0 ? '+' : ''}${t.points}P</b>
@@ -370,7 +381,7 @@ function viewManagerToday() {
         <div style="height:8px"></div>
         <div class="row" style="gap:8px">
           <button class="ghost grow" data-act="assign" data-id="${w.id}">＋ 임시 작업</button>
-          <button class="ghost grow" data-act="give-points" data-id="${w.id}">마일리지 주기 / 쓰기</button>
+          <button class="ghost grow" data-act="give-points" data-id="${w.id}">마일리지</button>
         </div>
       </div>`;
     }).join('')}`;
@@ -454,8 +465,8 @@ function viewManagerStats() {
         <b style="font-size:26px;color:${accent}">${repo.lifetimePoints(statsWorker)}P</b>
       </div>
       <div class="row" style="margin-top:12px;gap:8px">
-        <button class="ghost grow" data-act="ledger" data-id="${statsWorker}">내역 보기</button>
-        <button class="grow" data-act="give-points" data-id="${statsWorker}">주기 / 쓰기</button>
+        <button class="ghost grow" data-act="ledger" data-id="${statsWorker}">내역</button>
+        <button class="grow" data-act="give-points" data-id="${statsWorker}">주기 · 쓰기</button>
       </div>
     </div>`;
 }
@@ -569,12 +580,43 @@ function viewSettings(isManager) {
         기기를 바꾸거나 앱을 지웠다 깔 때도 이 코드로 돌아옵니다. 지금 저장해 두세요.</p>
         <button class="ghost" data-act="backup-code">관리자 코드 보기</button>
       </div>` : ''}
-      <div style="margin-top:12px">
-        <button class="danger" data-act="reset">이 기기 설정 초기화</button>
-        <button class="danger" data-act="wipe">모든 데이터 지우기</button>
-      </div>
+      <!-- 되돌릴 수 없는 것들은 접어 둔다. 알림을 만지러 들어왔다가
+           바로 아래에서 전부 지우는 버튼을 보는 일이 없게. -->
+      <details style="margin-top:14px">
+        <summary class="muted">고급 — 되돌릴 수 없는 작업</summary>
+        <p class="muted" style="margin:10px 0 0">
+          초기화는 이 기기의 연결만 지웁니다. 팀 저장소의 자료는 그대로입니다.
+          모든 데이터 지우기는 팀 저장소까지 비웁니다.</p>
+        <div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap">
+          <button class="danger" data-act="reset">이 기기 설정 초기화</button>
+          <button class="danger" data-act="wipe">모든 데이터 지우기</button>
+        </div>
+      </details>
     </div>`;
 }
+
+/**
+ * 아래 탭 아이콘.
+ *
+ * 예전에는 이모지(🏠📅✔⚙)를 썼다. 세 가지가 문제였다. 기기마다 그림이 달라
+ * 아빠 폰과 아이 폰이 다른 앱처럼 보였고, 혼자만 컬러라 평면인 화면에서
+ * 겉돌았고, 선택된 탭을 청록으로 물들이려 해도 이모지는 색이 안 먹었다.
+ * ✔ 는 아이콘이 아니라 글자라 혼자 작고 얇았다.
+ *
+ * 직접 그린 선 아이콘은 어디서나 같게 나오고, currentColor 로 색이 먹고,
+ * 굵기가 통일된다. 네 개뿐이라 코드도 몇 줄이다.
+ */
+const ico = (paths) =>
+  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+
+const TABS = [
+  ['TODAY', ico('<path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V20h13V9.5"/><path d="M9.5 20v-6h5v6"/>'), '오늘'],
+  ['STATS', ico('<path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/>'), '통계'],
+  ['TASKS', ico('<rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M8 12.2l2.7 2.7L16.2 9.4"/>'), '작업'],
+  // 설정을 톱니 대신 슬라이더로 둔다. 이 앱의 설정은 값을 고르는 곳이다.
+  ['SET', ico('<path d="M5 7h14"/><path d="M5 12h14"/><path d="M5 17h14"/><circle cx="9" cy="7" r="2.1"/><circle cx="15" cy="12" r="2.1"/><circle cx="9" cy="17" r="2.1"/>'), '설정'],
+];
 
 function viewManager() {
   const body = tab === 'TODAY' ? viewManagerToday()
@@ -583,9 +625,8 @@ function viewManager() {
     : viewSettings(true);
   return body + `
     <nav class="tabs">
-      ${[['TODAY', '🏠', '오늘'], ['STATS', '📅', '통계'], ['TASKS', '✔', '작업'], ['SET', '⚙', '설정']]
-        .map(([k, i, l]) => `<button class="${tab === k ? 'on' : ''}" data-act="tab" data-id="${k}">
-          <span class="ico">${i}</span>${l}</button>`).join('')}
+      ${TABS.map(([k, icon, label]) => `<button class="${tab === k ? 'on' : ''}" data-act="tab" data-id="${k}">
+          ${icon}${label}</button>`).join('')}
     </nav>`;
 }
 
