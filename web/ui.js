@@ -1124,13 +1124,37 @@ repo.subscribe(() => draw());
 // 화면이 보이는 동안만 확인 루프를 돈다
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) repo.stopLive();
-  else { repo.startLive(); draw(); }
+  else { repo.startLive(); draw(); reloadIfDeployed(); }
 });
 window.addEventListener('pagehide', () => repo.stopLive());
 
 draw();
 repo.startLive();
 publishSchedule(repo);
+
+/**
+ * 새 배포가 있으면 스스로 새로고침한다.
+ *
+ * 이 앱의 전제는 "배포하면 바로 반영"인데 실제로는 안 되고 있었다. 껍데기는
+ * 화면이 처음 만들어질 때만 주소를 부른다. 앱을 나갔다 돌아오는 것으로는
+ * 다시 부르지 않으므로, 최근 앱 목록에 남아 있는 한 예전 화면이 그대로다.
+ * 사용자는 앱을 완전히 종료해야만 새것을 봤고, 그걸 알 방법도 없었다.
+ *
+ * 그래서 돌아올 때마다 배포 버전만 물어보고 달라졌으면 새로 읽는다.
+ * 물어보는 파일은 몇 바이트짜리다.
+ *
+ * 입력 중이거나 모달이 떠 있으면 미룬다. 쓰던 것이 날아가면 안 된다.
+ */
+async function reloadIfDeployed() {
+  if (modal || isTyping()) return;
+  try {
+    const res = await fetch('version.txt?t=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) return;
+    const live = (await res.text()).trim();
+    if (!live || live === BUILD || BUILD.includes('__')) return;
+    location.reload();
+  } catch (_) { /* 인터넷이 없으면 그냥 둔다 */ }
+}
 
 /**
  * 상태바와 겹치지 않게 위쪽을 민다. 껍데기 버전에 상관없이 스스로 판단한다.

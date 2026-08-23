@@ -28,6 +28,7 @@ for (const f of fs.readdirSync(path.join(ROOT, 'web'))) {
   }
   fs.writeFileSync(path.join(site, f), buf);
 }
+fs.writeFileSync(path.join(site, 'version.txt'), 'flow-test');
 const server = spawn('python3', ['-m', 'http.server', String(PORT), '--bind', '127.0.0.1'],
   { cwd: site, stdio: 'ignore' });
 await new Promise((r) => setTimeout(r, 800));
@@ -567,6 +568,31 @@ await check('껍데기가 알려준 여백만큼 화면이 밀린다', async () 
     return h ? Math.round(h.getBoundingClientRect().top) : -1;
   });
   if (top < 42) throw new Error(`제목이 ${top}px 에서 시작한다. 상태바(42px) 안으로 들어갔다`);
+  await dev.close();
+});
+
+await check('새 배포가 있으면 앱이 스스로 새로 읽는다', async () => {
+  // 껍데기는 화면이 처음 만들어질 때만 주소를 부른다. 앱을 나갔다 돌아오는
+  // 것으로는 다시 부르지 않아, 최근 앱 목록에 남아 있으면 예전 화면이 그대로였다.
+  const dev = await browser.newContext({ viewport: { width: 412, height: 915 } });
+  await dev.route(FAKE_DB + '/**', serveDb);
+  const pg = await dev.newPage();
+  await pg.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
+
+  let reloads = 0;
+  pg.on('framenavigated', (f) => { if (f === pg.mainFrame()) reloads++; });
+
+  // 아직 같은 버전이면 그대로 둬야 한다
+  await pg.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await pg.waitForTimeout(600);
+  if (reloads !== 0) throw new Error('같은 버전인데 새로 읽었다');
+
+  // 새 배포가 올라온 상황
+  await dev.route('**/version.txt*', (route) =>
+    route.fulfill({ status: 200, contentType: 'text/plain', body: 'newer-build' }));
+  await pg.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await pg.waitForTimeout(1200);
+  if (reloads === 0) throw new Error('새 배포가 있는데 새로 읽지 않았다');
   await dev.close();
 });
 
