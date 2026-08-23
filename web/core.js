@@ -1192,4 +1192,8 @@ export const shell = {
   requestNotify() { try { window.HennyShell?.requestNotify?.(); } catch (e) {} },
   openNotificationSettings() { try { window.HennyShell?.openNotificationSettings?.(); } catch (e) {} },
   openAlarmSettings() { try { window.HennyShell?.openAlarmSettings?.(); } catch (e) {} },
+  /** 껍데기가 잰 화면 여백. 겹침을 진단할 때 숫자로 보기 위한 것이다. */
+  insets() {
+    try { return JSON.parse(window.HennyShell?.insets?.() || 'null'); } catch (e) { return null; }
+  },
 };

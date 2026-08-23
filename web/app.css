@@ -32,17 +32,24 @@ body {
   /* 상태바·노치·제스처바 자리를 피한다.
    *
    * 안드로이드는 앱이 시스템 막대 뒤까지 그린다(targetSdk 35+). 그대로 두면
-   * 맨 윗줄이 시계와 겹친다. 예전에는 껍데기(MainActivity)가 밀어 줬는데,
-   * 그러면 껍데기를 새로 설치해야만 고쳐진다. 웹이 직접 피하도록 옮겼다.
-   * 이제 배포만 하면 반영된다.
+   * 맨 윗줄이 시계와 겹친다.
    *
-   * 껍데기가 이미 밀어 준 경우에는 이 값이 0 이라 이중으로 밀리지 않는다.
-   * (새 껍데기는 인셋을 소비해 웹에 0 으로 전달한다)
+   * 값은 두 갈래로 받는다.
+   *
+   *   --inset-top   껍데기가 재서 넘겨준 값. 안드로이드 앱에서는 이쪽이 쓰인다.
+   *   env(...)      브라우저가 주는 값. iOS 사파리와 노치 있는 기기에서 맞다.
+   *
+   * env() 만으로는 안 된다. 안드로이드 WebView 는 그 값에 디스플레이 컷아웃만
+   * 담고 상태바 높이는 담지 않아서, 노치 없는 기기에서는 0 이 나온다.
+   * 이걸 모르고 env() 로만 고치려다 한 번 헛수고했다.
+   *
+   * 옛 껍데기는 변수를 안 넘기는 대신 WebView 자체를 밀어 두었다. 그때는
+   * 변수가 없어 env() 로 떨어지고 그 값도 0 이라, 이중으로 밀리지 않는다.
    */
-  padding-top: env(safe-area-inset-top);
-  padding-left: env(safe-area-inset-left);
-  padding-right: env(safe-area-inset-right);
-  padding-bottom: env(safe-area-inset-bottom);
+  padding-top: var(--inset-top, env(safe-area-inset-top));
+  padding-left: var(--inset-left, env(safe-area-inset-left));
+  padding-right: var(--inset-right, env(safe-area-inset-right));
+  padding-bottom: var(--inset-bottom, env(safe-area-inset-bottom));
 }
 /* 아래 여백은 탭바를 가리지 않을 만큼만. 탭바가 없는 작업자 화면에서는
    그만큼 빈 자리가 남아 화면이 어중간하게 끝났다. */

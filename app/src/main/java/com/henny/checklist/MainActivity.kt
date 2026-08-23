@@ -93,6 +93,12 @@ class MainActivity : ComponentActivity() {
             addJavascriptInterface(Bridge(), "HennyShell")
 
             webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    // 인셋은 페이지보다 먼저 정해지는 일이 많다. 그때 넘긴 값은
+                    // 아직 문서가 없어 버려지므로, 문서가 생긴 뒤 한 번 더 넘긴다.
+                    pushInsets()
+                }
+
                 override fun onReceivedError(
                     view: WebView?,
                     request: android.webkit.WebResourceRequest?,
@@ -110,22 +116,23 @@ class MainActivity : ComponentActivity() {
         setContentView(web)
 
         // targetSdk 35 부터는 앱이 상태바·내비게이션바 뒤까지 그린다(edge-to-edge).
-        // 그대로 두면 웹 화면 맨 윗줄이 시계와 겹친다. 시스템 막대 높이만큼
-        // 안쪽으로 민다.
+        // 그대로 두면 웹 화면 맨 윗줄이 시계와 겹친다.
         //
-        // 값을 상수로 박을 수 없다. 기기마다 다르고, 회전하면 바뀌고, 노치가 있는
-        // 기기는 또 다르다. 그래서 OS 가 "지금 이 값이다"라고 알려줄 때마다 받는
-        // 콜백 형태다. 화면이 바뀔 때마다 다시 불린다.
-        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(web) { view, insets ->
+        // 웹의 env(safe-area-inset-*) 로는 안 된다. 안드로이드 WebView 는 그 값에
+        // 디스플레이 컷아웃(노치)만 담고 상태바 높이는 담지 않는다. iOS 사파리와
+        // 다른 점이고, 노치 없는 기기에서는 0 이 나온다. 실제로 이걸로 고치려다
+        // 한 번 헛수고했다.
+        //
+        // 그래서 껍데기가 잰 값을 CSS 변수로 직접 넘긴다. 웹이 그 값만큼 피한다.
+        // 여백을 웹이 쥐고 있어야 화면 안쪽 배경색이나 스크롤과 어긋나지 않는다.
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(web) { _, insets ->
             val bars = insets.getInsets(
                 androidx.core.view.WindowInsetsCompat.Type.systemBars()
                     or androidx.core.view.WindowInsetsCompat.Type.displayCutout()
             )
-            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
-            // 여기서 소비해야 웹 쪽 env(safe-area-inset-*) 가 0 이 된다.
-            // 웹도 같은 자리를 피하도록 되어 있어서, 소비하지 않으면 양쪽이
-            // 모두 밀어 위쪽에 빈 띠가 두 번 생긴다.
-            androidx.core.view.WindowInsetsCompat.CONSUMED
+            lastInsets = bars
+            pushInsets()
+            insets
         }
 
         // 안드로이드의 뒤로 가기는 브라우저의 뒤로 가기와 다르다. 기본 동작은
@@ -148,6 +155,33 @@ class MainActivity : ComponentActivity() {
      * 시각이 지나갔을 수 있다. AlarmScheduler 는 "다음 한 개"만 예약하는
      * 방식이라, 돌아왔을 때 그다음 것을 새로 걸어 줘야 한다.
      */
+    /** OS 가 마지막으로 알려준 시스템 막대 크기. 화면이 바뀔 때마다 갱신된다. */
+    private var lastInsets: androidx.core.graphics.Insets? = null
+
+    /**
+     * 잰 여백을 웹에 CSS 변수로 넘긴다.
+     *
+     * 안드로이드는 픽셀로 주고 CSS 는 밀도에 나눈 값을 쓰므로 density 로 나눈다.
+     * 페이지가 아직 안 떴으면 조용히 넘어간다. 뜬 뒤 onPageFinished 에서 다시 부른다.
+     */
+    private fun pushInsets() {
+        val bars = lastInsets ?: return
+        val d = resources.displayMetrics.density.takeIf { it > 0f } ?: 1f
+        // 상태바 값이 0 으로 오는 기기가 있어 시스템 리소스로 한 번 더 받아 본다.
+        val topPx = if (bars.top > 0) bars.top else statusBarFallback()
+        val css = "document.documentElement.style.setProperty('--inset-top','${(topPx / d).toInt()}px');" +
+            "document.documentElement.style.setProperty('--inset-bottom','${(bars.bottom / d).toInt()}px');" +
+            "document.documentElement.style.setProperty('--inset-left','${(bars.left / d).toInt()}px');" +
+            "document.documentElement.style.setProperty('--inset-right','${(bars.right / d).toInt()}px');"
+        runCatching { web.evaluateJavascript(css, null) }
+    }
+
+    /** 인셋이 0 으로 오는 기기를 위한 예비값. 안드로이드가 늘 갖고 있는 값이다. */
+    private fun statusBarFallback(): Int = runCatching {
+        val id = resources.getIdentifier("status_bar_height", "dimen", "android")
+        if (id > 0) resources.getDimensionPixelSize(id) else 0
+    }.getOrDefault(0)
+
     override fun onStart() {
         super.onStart()
         AlarmScheduler.reschedule(this)
@@ -235,6 +269,23 @@ class MainActivity : ComponentActivity() {
             val info = packageManager.getPackageInfo(packageName, 0)
             "${info.versionName}"
         }.getOrDefault("")
+
+        /**
+         * 껍데기가 잰 화면 여백. 설정 화면에서 그대로 보여 준다.
+         * 겹침 문제를 다시 겪을 때 추측하지 않고 숫자를 보고 판단하기 위한 것이다.
+         */
+        @JavascriptInterface
+        fun insets(): String {
+            val bars = lastInsets
+            val d = resources.displayMetrics.density.takeIf { it > 0f } ?: 1f
+            val top = if (bars == null || bars.top <= 0) statusBarFallback() else bars.top
+            // 손으로 JSON 을 이어 붙이면 따옴표가 겹쳐 읽기 어렵다. 만들어 주는 것을 쓴다.
+            return org.json.JSONObject()
+                .put("top", (top / d).toInt())
+                .put("bottom", ((bars?.bottom ?: 0) / d).toInt())
+                .put("measured", bars != null)
+                .toString()
+        }
 
         @JavascriptInterface
         fun canNotify(): Boolean = Notifications.canPost(this@MainActivity)

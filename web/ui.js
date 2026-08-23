@@ -115,6 +115,21 @@ function pills(items, accent) {
  * 여러 기기가 각자 저장소를 읽고 쓰는 구조라, 지금 보고 있는 화면이 언제
  * 기준인지 알 수 없으면 사용자가 "안 되는 건가?"라고 의심하게 된다.
  */
+/**
+ * 화면 위쪽 여백이 얼마로 잡혔는지 보여 준다.
+ *
+ * 상태바와 글씨가 겹치는 문제를 두 번 헛짚었다. 값을 볼 수 없으니 매번
+ * 추측해야 했기 때문이다. 숫자를 띄워 두면 "0 이라 안 밀린 것"인지
+ * "밀었는데도 겹치는 것"인지 바로 갈린다.
+ */
+function insetLine() {
+  if (!shell.present) return '';
+  const css = getComputedStyle(document.body).paddingTop;
+  const shellSays = shell.insets();
+  const from = shellSays ? `껍데기 ${shellSays.top}px` : '껍데기가 안 알려줌(옛 버전)';
+  return `<div class="muted" style="margin-top:4px">화면 위 여백 ${esc(css)} · ${esc(from)}</div>`;
+}
+
 function syncLine() {
   const s = repo.settings;
   if (repo.syncing) return '맞추는 중…';
@@ -532,6 +547,7 @@ function viewSettings(isManager) {
     <div class="card"><h3>이 기기</h3>
       <p>${s.role === 'MANAGER' ? '관리자용으로 설정됨' : esc(repo.workerName(s.workerId)) + '의 기기'}</p>
       <div class="muted">웹 ${esc(BUILD)}${shell.present ? ' · 앱 ' + esc(shell.version()) : ''}</div>
+      ${insetLine()}
       ${!shell.present
         ? '<p class="muted" style="margin:8px 0 0">브라우저로 열려 있습니다. 알림을 받으려면 앱으로 설치하세요. <a href="install.html" target="_blank" rel="noopener">설치 페이지</a></p>'
         : update

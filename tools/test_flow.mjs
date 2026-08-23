@@ -477,6 +477,55 @@ await check('최신이면 아무것도 안 뜬다', async () => {
   await dev.close();
 });
 
+await check('껍데기가 알려준 여백만큼 화면이 밀린다', async () => {
+  // 껍데기가 --inset-top 을 넣어 주면 본문이 그만큼 내려가야 한다.
+  // 안드로이드 WebView 의 env(safe-area-inset-top) 은 상태바를 안 알려주므로
+  // 이 경로가 실제로 쓰이는 유일한 길이다.
+  const dev = await browser.newContext({ viewport: { width: 412, height: 915 } });
+  await dev.route(FAKE_DB + '/**', serveDb);
+  await dev.addInitScript(() => {
+    window.HennyShell = {
+      version: () => '1.0.99', canNotify: () => true,
+      setSchedule: () => {}, legacyData: () => '',
+      insets: () => JSON.stringify({ top: 42, bottom: 16, measured: true }),
+    };
+    // 껍데기가 페이지가 뜬 뒤에 넣어 주는 것과 같은 동작
+    addEventListener('DOMContentLoaded', () => {
+      document.documentElement.style.setProperty('--inset-top', '42px');
+    });
+  });
+  const pg = await dev.newPage();
+  await pg.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
+  await pg.waitForTimeout(400);
+
+  const pad = await pg.evaluate(() => getComputedStyle(document.body).paddingTop);
+  if (pad !== '42px') throw new Error(`위쪽 여백이 ${pad} 다 (42px 여야 함)`);
+
+  // 제목이 상태바 아래에서 시작하는지 실제 좌표로 본다
+  const top = await pg.evaluate(() => {
+    const h = document.querySelector('h1');
+    return h ? Math.round(h.getBoundingClientRect().top) : -1;
+  });
+  if (top < 42) throw new Error(`제목이 ${top}px 에서 시작한다. 상태바(42px) 안으로 들어갔다`);
+  await dev.close();
+});
+
+await check('껍데기가 값을 안 주면 밀지 않는다', async () => {
+  // 옛 껍데기는 WebView 자체를 밀어 둔다. 그때 웹까지 밀면 두 번 밀린다.
+  const dev = await browser.newContext({ viewport: { width: 412, height: 915 } });
+  await dev.route(FAKE_DB + '/**', serveDb);
+  await dev.addInitScript(() => {
+    window.HennyShell = { version: () => '1.0.41', canNotify: () => true,
+      setSchedule: () => {}, legacyData: () => '' };
+  });
+  const pg = await dev.newPage();
+  await pg.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
+  await pg.waitForTimeout(300);
+  const pad = await pg.evaluate(() => getComputedStyle(document.body).paddingTop);
+  if (pad !== '0px') throw new Error(`위쪽 여백이 ${pad} 다 (0px 여야 함)`);
+  await dev.close();
+});
+
 await check('앱에 넘길 알람 일정이 만들어진다', async () => {
   // 검사가 요일과 시각에 휘둘리지 않도록 입력을 직접 만든다.
   //
