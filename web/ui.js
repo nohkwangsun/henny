@@ -369,7 +369,7 @@ function viewWorker() {
         <span class="box">${t.doneAt ? '✓' : ''}</span>
         <span class="grow">
           <span class="title">${t.isAssignment ? '<span class="badge">임시</span>' : ''}${esc(t.title)}</span>
-          ${t.dueMinute != null ? `<br><span class="muted">${minuteToText(t.dueMinute)}까지</span>` : ''}
+          ${t.dueMinute != null ? `<span class="due">${minuteToText(t.dueMinute)}까지</span>` : ''}
         </span>
         <span class="pts ${t.points < 0 ? 'minus' : ''}">${t.points > 0 ? '+' : ''}${t.points}P</span>
       </button>`).join('')}
@@ -420,7 +420,7 @@ function viewManagerToday() {
           <button class="mcheck" data-act="mgr-toggle" data-id="${w.id}:${t.id}"
                   title="${t.doneAt ? '완료 해제' : '완료로 표시'}">
             <span class="dot ${t.doneAt ? 'on' : ''}" style="--accent:${accent}">${t.doneAt ? '✓' : ''}</span>
-            <span class="grow" style="${t.doneAt ? 'color:var(--muted);text-decoration:line-through' : ''}">${t.isAssignment ? '<span class="badge">임시</span>' : ''}${esc(t.title)}</span>
+            <span class="grow clip" style="${t.doneAt ? 'color:var(--muted);text-decoration:line-through' : ''}">${t.isAssignment ? '<span class="badge">임시</span>' : ''}${esc(t.title)}</span>
             <span class="muted" style="font-size:12px">${t.doneAt ? doneAtText(t.doneAt) + ' 완료'
               : t.dueMinute != null ? minuteToText(t.dueMinute) + '까지' : ''}</span>
             <b style="font-size:13px;color:${t.doneAt ? accent : (t.points < 0 ? 'var(--error)' : 'var(--muted)')}">${t.points > 0 ? '+' : ''}${t.points}P</b>
@@ -529,7 +529,7 @@ function viewManagerTasks() {
     <div class="card"><h3>정기 작업</h3>
       ${routines.length === 0 ? '<p class="muted">아직 없습니다. 아래에서 추가하세요.</p>' : ''}
       ${routines.map((r) => `<div class="list-row">
-        <div class="grow"><b style="${r.active === false ? 'color:var(--muted)' : ''}">${esc(r.title)}</b>
+        <div class="grow"><b class="clip2" style="${r.active === false ? 'color:var(--muted)' : ''}">${esc(r.title)}</b>
           <div class="muted">${r.points ?? DEFAULT_POINTS}P · ${daysText(r.days || [])}${r.dueMinute != null ? ' · ' + minuteToText(r.dueMinute) + '까지' : ''}${r.active === false ? ' · 쉼' : ''}</div></div>
         <button class="plain" data-act="edit-routine" data-id="${r.id}">수정</button>
       </div>`).join('')}

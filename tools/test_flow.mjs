@@ -728,6 +728,48 @@ await check('진행 링의 글씨가 자릿수가 늘어도 읽힌다', async ()
   await dev.close();
 });
 
+await check('긴 제목이 배점 위로 넘치지 않는다', async () => {
+  // 할 일 줄은 버튼인데, 버튼 기본 규칙(nowrap)이 걸려 줄바꿈을 못 하고
+  // 긴 제목이 오른쪽 배점 위로 흘러 겹쳤다. 실제 좌표로 확인한다.
+  const dev = await browser.newContext({ viewport: { width: 412, height: 915 } });
+  await dev.route(FAKE_DB + '/**', serveDb);
+  const pg = await dev.newPage();
+  await pg.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
+
+  const bad = await pg.evaluate(() => {
+    const host = document.createElement('div');
+    host.style.width = '412px';
+    document.body.appendChild(host);
+    const out = [];
+    const titles = [
+      '숙제',
+      '정시 학교루틴 (6시50분 옷.양말.가방.로션.시계)',
+      '아주아주아주긴제목을붙여도줄이안바뀌면오른쪽숫자를덮어버린다지금이경우가딱그랬다',
+    ];
+    for (const t of titles) {
+      host.innerHTML = `<button class="task" style="--accent:#0f6f60">
+        <span class="box"></span>
+        <span class="grow"><span class="title">${t}</span><span class="due">6:50까지</span></span>
+        <span class="pts">+100P</span></button>`;
+      const title = host.querySelector('.title').getBoundingClientRect();
+      const pts = host.querySelector('.pts').getBoundingClientRect();
+      if (title.right > pts.left) {
+        out.push(`"${t.slice(0, 12)}…" 제목이 배점을 ${Math.round(title.right - pts.left)}px 덮었다`);
+      }
+      // 세 줄 넘게 길어지면 줄 하나가 화면을 다 먹는다. 두 줄로 묶여야 한다.
+      // 글씨 크기가 아니라 줄 높이로 나눠야 실제 줄 수가 나온다.
+      const cs = getComputedStyle(host.querySelector('.title'));
+      const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.4;
+      const lines = title.height / lh;
+      if (lines > 2.3) out.push(`"${t.slice(0, 12)}…" 제목이 ${lines.toFixed(1)}줄로 늘어났다`);
+    }
+    host.remove();
+    return out;
+  });
+  if (bad.length) throw new Error(bad.join(' / '));
+  await dev.close();
+});
+
 await check('앱에 넘길 알람 일정이 만들어진다', async () => {
   // 검사가 요일과 시각에 휘둘리지 않도록 입력을 직접 만든다.
   //
