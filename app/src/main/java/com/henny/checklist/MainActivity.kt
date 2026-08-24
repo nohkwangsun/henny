@@ -64,6 +64,16 @@ class MainActivity : ComponentActivity() {
         }
 
     /**
+     * 첫 화면을 못 읽었는지. 못 읽었으면 앱으로 돌아올 때마다 다시 시도한다.
+     *
+     * 안내에는 "연결 후 앱을 다시 열어주세요"라고 적어 두었는데 실제로는
+     * 그렇게 해도 다시 읽지 않았다. 다시 읽는 코드는 웹에 있는데 그 웹이
+     * 안 떴으니 돌아갈 길이 없었다. 앱을 완전히 종료하는 수밖에 없었고
+     * 그걸 알 방법도 없었다.
+     */
+    private var loadFailed = false
+
+    /**
      * onCreate 는 "이 화면 객체가 처음 만들어졌다" 시점이다. 앱 시작과 다르다.
      * 화면 회전이나 시스템 설정 변경으로도 불릴 수 있다(아래 configChanges 참고).
      */
@@ -92,7 +102,31 @@ class MainActivity : ComponentActivity() {
             // 건너온다. 아래 Bridge 클래스가 이 앱의 "공개 API" 전부다.
             addJavascriptInterface(Bridge(), "HennyShell")
 
+            // 링크를 눌러 파일이 내려오면 WebView 는 아무 일도 하지 않는다.
+            // 화면에 그릴 수 없는 것은 조용히 버린다. APK 받기 버튼이 눌러도
+            // 무반응이던 이유가 이것이다. 내려받기는 껍데기가 받아 시스템에 넘긴다.
+            setDownloadListener { url, _, _, _, _ -> openOutside(url) }
+
             webViewClient = object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(
+                    view: WebView?,
+                    request: android.webkit.WebResourceRequest?
+                ): Boolean {
+                    val req = request ?: return false
+                    val url = req.url ?: return false
+                    // 화면 전체가 옮겨 가는 것만 본다. 안쪽 조각이 부르는 것까지
+                    // 가로채면 엉뚱한 요청에 브라우저가 뜬다.
+                    if (!req.isForMainFrame) return false
+                    // http(s) 가 아니면 손대지 않는다. 오프라인 안내 화면처럼
+                    // 주소가 없는 것(about:, data:)이 여기로 들어올 수 있다.
+                    if (url.scheme != "https" && url.scheme != "http") return false
+                    // 우리 사이트 안이면 이 화면에서 그대로 연다.
+                    if (url.host == SITE_HOST) return false
+                    // 밖으로 나가는 주소는 브라우저에 넘긴다. 이 WebView 는
+                    // 내려받기도 로그인도 못 하므로 안에서 열면 막다른 길이 된다.
+                    return openOutside(url.toString())
+                }
+
                 override fun onReceivedError(
                     view: WebView?,
                     request: android.webkit.WebResourceRequest?,
@@ -101,9 +135,13 @@ class MainActivity : ComponentActivity() {
                     // 첫 실행에 네트워크가 없으면 흰 화면만 남는다. 안내라도 띄운다.
                     // 이미 한 번 열어 본 뒤라면 서비스 워커(web/sw.js)가 캐시에서
                     // 꺼내 주므로 여기까지 오지 않는다.
-                    if (request?.isForMainFrame == true) {
-                        view?.loadDataWithBaseURL(null, OFFLINE_HTML, "text/html", "utf-8", null)
-                    }
+                    if (request?.isForMainFrame != true) return
+                    loadFailed = true
+                    // 무엇 때문에 못 읽었는지 화면에 남긴다. 이름 못 찾음과
+                    // 시간 초과와 차단은 대처가 다른데, 지금까지는 셋을
+                    // 구분할 방법이 없어 매번 짐작해야 했다.
+                    val detail = "${error?.errorCode ?: 0} ${error?.description ?: ""}"
+                    view?.loadDataWithBaseURL(APP_URL, offlineHtml(detail), "text/html", "utf-8", null)
                 }
             }
         }
@@ -161,6 +199,12 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         AlarmScheduler.reschedule(this)
+        // 못 읽은 채로 남아 있으면 돌아올 때마다 다시 시도한다. 안내에 적어 둔
+        // "연결 후 앱을 다시 열어주세요"가 그제야 사실이 된다.
+        if (loadFailed) {
+            loadFailed = false
+            web.loadUrl(APP_URL)
+        }
     }
 
     private fun onMain(block: () -> Unit) = runOnUiThread(block)
@@ -263,6 +307,23 @@ class MainActivity : ComponentActivity() {
                 .toString()
         }
 
+        /**
+         * 주소를 브라우저로 연다. APK 받기가 이 길을 쓴다.
+         *
+         * 웹은 이 메서드가 있는지 없는지로 껍데기 세대를 가른다. 없으면
+         * 옛 껍데기라 링크를 눌러도 아무 일이 없으므로, 주소를 눈에 보이게
+         * 띄워 주는 쪽으로 화면을 바꾼다.
+         *
+         * https 만 받는다. 이 메서드는 페이지에 열려 있고, 페이지가 늘
+         * 우리 것이라는 보장은 없다.
+         */
+        @JavascriptInterface
+        fun openExternal(url: String): Boolean {
+            if (!url.startsWith("https://")) return false
+            onMain { openOutside(url) }
+            return true
+        }
+
         @JavascriptInterface
         fun canNotify(): Boolean = Notifications.canPost(this@MainActivity)
 
@@ -323,6 +384,21 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * 주소를 앱 밖으로 넘긴다. 브라우저나 내려받기 관리자가 받는다.
+     *
+     * 넘기지 못하면 false 를 돌려준다. 부르는 쪽(shouldOverrideUrlLoading)이
+     * 그 값을 보고 "그럼 내가 연다"로 되돌아갈 수 있어야 하기 때문이다.
+     * 받아 줄 앱이 없는 기기가 실제로 있어서 runCatching 으로 감쌌다.
+     */
+    private fun openOutside(url: String): Boolean = runCatching {
+        startActivity(
+            Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+        true
+    }.getOrDefault(false)
+
     companion object {
         /**
          * 배포 주소. 여기만 바꾸면 다른 저장소로도 옮길 수 있다.
@@ -332,14 +408,31 @@ class MainActivity : ComponentActivity() {
          */
         const val APP_URL = "https://nohkwangsun.github.io/henny/"
 
-        /** 첫 실행에 네트워크가 없을 때 흰 화면 대신 띄우는 안내. */
-        private const val OFFLINE_HTML = """
+        /** APP_URL 의 호스트. 이 안이면 앱 화면, 밖이면 브라우저로 보낸다. */
+        private const val SITE_HOST = "nohkwangsun.github.io"
+
+        /** 오류 문구에 섞인 꺾쇠를 죽인다. 그대로 넣으면 화면이 깨진다. */
+        private fun esc(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+        /**
+         * 첫 실행에 네트워크가 없을 때 흰 화면 대신 띄우는 안내.
+         *
+         * 다시 시도 단추를 반드시 둔다. 예전에는 안내만 있고 빠져나갈 길이
+         * 없어서, 연결이 돌아와도 앱을 완전히 종료하기 전에는 이 화면에
+         * 갇혔다. 주소가 우리 사이트라 눌러도 브라우저로 새지 않는다.
+         */
+        private fun offlineHtml(detail: String) = """
             <html><head><meta name="viewport" content="width=device-width,initial-scale=1">
             <style>body{font:16px -apple-system,"Noto Sans KR",sans-serif;padding:48px 24px;
-            background:#f7f3ee;color:#1e2321;text-align:center}
-            @media(prefers-color-scheme:dark){body{background:#14171a;color:#e8e5e1}}</style></head>
+            background:#eef0ee;color:#1e2321;text-align:center}
+            a{display:inline-block;margin-top:28px;padding:13px 28px;border-radius:999px;
+            background:#0f6f60;color:#fff;text-decoration:none;font-weight:700}
+            small{display:block;margin-top:32px;color:#8b8680;font-size:12px}
+            @media(prefers-color-scheme:dark){body{background:#121614;color:#e6e9e7}a{background:#6fcbbb;color:#0b1110}}</style></head>
             <body><h2>연결할 수 없습니다</h2>
-            <p>처음 실행할 때는 인터넷이 필요합니다.<br>연결 후 앱을 다시 열어주세요.</p>
+            <p>처음 실행할 때는 인터넷이 필요합니다.<br>연결을 확인한 뒤 아래를 눌러주세요.</p>
+            <a href="$APP_URL">다시 시도</a>
+            <small>${esc(detail)}</small>
             </body></html>
         """
     }

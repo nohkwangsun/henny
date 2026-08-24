@@ -63,24 +63,52 @@ function toast(text) {
   setTimeout(() => el.remove(), 2600);
 }
 
-function ring(done, total, accent, size = 132) {
-  const r = (size - 14) / 2;
+/**
+ * 진행 링.
+ *
+ * 선 굵기(14)와 글씨 크기(24)를 링 크기와 무관하게 고정해 두었던 것이
+ * 문제였다. 작은 링(86px)에서는 가운데 흰 자리가 지름 58px 밖에 안 남는데
+ * 거기에 24px 글씨와 회색 퍼센트 줄을 같이 넣으니, 글씨가 흰 자리를 넘어
+ * 청록 선 위로 올라탔다. 회색 글씨가 진한 청록에 겹쳐 안 읽히던 것이
+ * "시인성이 떨어진다"의 정체다.
+ *
+ * 굵기와 글씨를 모두 크기에 비례하게 바꾸고, 글씨는 실제로 들어갈 자리를
+ * 재서 정한다. 글자 수가 늘어도(10 / 12) 넘지 않는다.
+ *
+ * 퍼센트 줄은 뺐다. 링 자체가 이미 비율이고, 관리자 카드에는 바로 옆에
+ * "N개 남음"까지 있다. 좁은 자리에 같은 말을 세 번 넣느라 셋 다 안 읽혔다.
+ */
+export function ring(done, total, accent, size = 132) {
+  const w = Math.max(7, Math.round(size * 0.1));
+  const r = (size - w) / 2;
   const c = 2 * Math.PI * r;
   const ratio = total === 0 ? 0 : done / total;
+  // 들어갈 자리에서 글자 수로 크기를 정한다. 0.55em 은 굵은 숫자의 평균 폭,
+  // 0.86 은 원 안에서 글씨 높이만큼 좁아지는 것을 감안한 실폭이다.
+  // 둘 다 넉넉하게 잡았다. 넘치는 것보다 조금 작은 편이 낫다.
+  const room = (size - 2 * w) * 0.86;
+  const at = (t) => Math.min(Math.round(size * 0.26), Math.round(room / (t.length * 0.55)));
+  const MIN = 14;   // 이보다 작아지면 들어가기는 해도 읽히지 않는다
+  let label = total === 0 ? '없음' : `${done} / ${total}`;
+  let fs = at(label);
+  // 두 자리까지는 그대로 들어간다. 세 자리가 되면 12px 까지 줄어 안 읽혔다.
+  // 그때는 슬래시 옆 공백을 버려 자리를 만든다. 더 줄이는 것보다 낫다.
+  if (fs < MIN && total !== 0) {
+    label = `${done}/${total}`;
+    fs = at(label);
+  }
+  fs = Math.max(11, fs);
   return `
     <div class="ring" style="width:${size}px;height:${size}px">
       <svg width="${size}" height="${size}">
         <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none"
-                stroke="var(--track)" stroke-width="14"/>
+                stroke="var(--track)" stroke-width="${w}"/>
         <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none"
-                stroke="${accent}" stroke-width="14" stroke-linecap="round"
+                stroke="${accent}" stroke-width="${w}" stroke-linecap="round"
                 stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - ratio)}"
                 style="transition:stroke-dashoffset .45s ease"/>
       </svg>
-      <div class="inner">
-        <b>${done} / ${total}</b>
-        <div class="muted">${total === 0 ? '없음' : Math.round(ratio * 100) + '%'}</div>
-      </div>
+      <div class="inner" style="font-size:${fs}px">${label}</div>
     </div>`;
 }
 
@@ -580,7 +608,7 @@ function viewSettings(isManager) {
         : update
           ? `<div class="row" style="margin-top:10px;gap:8px">
                <span class="grow"><b>새 버전 ${esc(update.latest)}</b>이 나왔습니다.</span>
-               <a class="btn" href="${APK_URL}">받기</a>
+               <button class="btn" data-act="get-apk">받기</button>
              </div>
              <p class="hint">지우지 말고 덮어 설치하세요. 기록이 그대로 남습니다.</p>`
           : `<p class="hint">앱은 최신입니다.
@@ -669,7 +697,7 @@ function updateBar() {
       <b>새 버전 ${esc(update.latest)}</b>
       <div class="muted">지금은 ${esc(update.mine)} 입니다. 지우지 말고 덮어 설치하세요.</div>
     </div>
-    <a class="btn" href="${APK_URL}">받기</a>
+    <button class="btn" data-act="get-apk">받기</button>
     <button class="icon" data-act="hide-update" title="나중에">✕</button>
   </div>`;
 }
@@ -885,6 +913,31 @@ const ACTIONS = {
   'open-noti': () => shell.openNotificationSettings(),
   'open-alarm': () => shell.openAlarmSettings(),
   'clear-broken': () => { repo.clearBroken(); },
+  /**
+   * APK 받기. "눌러도 무반응"이라는 신고를 받고 고친 자리다.
+   *
+   * WebView 는 링크를 눌러 파일이 내려오면 그냥 버린다. 화면에 그릴 수 없는
+   * 것은 조용히 버리는 것이 기본 동작이고, 껍데기가 내려받기를 받아 주도록
+   * 손대지 않으면 아무 일도 일어나지 않는다. 그래서 <a href="...apk"> 는
+   * 앱 안에서 처음부터 죽은 링크였다.
+   *
+   * 새 껍데기는 openExternal 로 브라우저에 넘긴다. 옛 껍데기에는 그 통로가
+   * 없다. 그런데 이 버튼을 누르는 사람은 바로 그 옛 껍데기를 쓰고 있는
+   * 사람이다. 여기서 또 막다른 길이 되면 고친 의미가 없으므로, 그때는
+   * 주소를 눈에 보이게 띄워 준다.
+   */
+  'get-apk': () => {
+    if (!shell.present) { location.href = APK_URL; return; }
+    if (shell.openExternal(APK_URL)) { toast('브라우저에서 받는 중입니다'); return; }
+    openModal(() => modalShell('이 버전은 앱 안에서 받지 못합니다',
+      `<p>지금 쓰고 계신 앱은 안에서 파일을 받지 못합니다.
+       아래 주소를 복사해 폰 브라우저(크롬) 주소창에 붙여 넣으세요.
+       한 번만 이렇게 받으시면 다음부터는 받기 버튼이 바로 동작합니다.</p>
+       <div class="code">${esc(APK_URL)}</div>`,
+      `<button class="ghost" data-act="close">닫기</button>
+       <button data-act="copy" data-id="${esc(APK_URL)}">주소 복사</button>`));
+  },
+
   'hide-update': () => {
     // 이 버전에 대해서만 접어 둔다. 다음 버전이 나오면 다시 뜬다.
     try { localStorage.setItem('henny.updateSeen', update?.latest || ''); } catch (_) {}
@@ -1100,6 +1153,34 @@ function makePointsPick() {
 
 // ------------------------------------------------------------------ 이벤트
 
+/**
+ * 클립보드에 넣는다.
+ *
+ * navigator.clipboard 는 WebView 판에 따라 없거나 조용히 거절한다.
+ * 여기서 실패하면 사용자는 관리자 코드나 받기 주소를 손으로 옮길 방법이
+ * 없으므로, 옛 방식(execCommand)까지 시도한 뒤에 실패를 알린다.
+ */
+function copyText(text) {
+  const legacy = () => {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      ta.remove();
+      toast(ok ? '복사했습니다' : '복사하지 못했습니다. 길게 눌러 직접 복사하세요.');
+    } catch (_) {
+      toast('복사하지 못했습니다. 길게 눌러 직접 복사하세요.');
+    }
+  };
+  if (!navigator.clipboard?.writeText) return legacy();
+  navigator.clipboard.writeText(text).then(() => toast('복사했습니다')).catch(legacy);
+}
+
 function onClick(ev) {
   const target = ev.target.closest('[data-act]');
   if (!target) {
@@ -1114,10 +1195,7 @@ function onClick(ev) {
   if (act === 'day') return dayToggle?.(id);
   if (act === 'del-routine-now') return deleteRoutineNow?.();
   if (act === 'points') return pointsPick?.(id);
-  if (act === 'copy') {
-    navigator.clipboard?.writeText(id).then(() => toast('복사했습니다')).catch(() => toast('복사하지 못했습니다'));
-    return;
-  }
+  if (act === 'copy') { copyText(id); return; }
   const fn = ACTIONS[act];
   if (fn) { fn(id); draw(); }
 }
