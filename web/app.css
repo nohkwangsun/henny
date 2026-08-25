@@ -166,6 +166,12 @@ label.field > span { display: block; font-size: 13px; color: var(--muted); margi
 
 /* 한 줄짜리 자리(관리자 카드의 촘촘한 목록)는 한 줄로 자른다. */
 .clip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 길게 누르면 제목 전체를 띄우는 자리. 안드로이드는 길게 누르면 글자를
+   선택하며 손잡이가 뜨는데, 우리 동작과 겹쳐 둘 다 어정쩡해진다. */
+[data-full] {
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+}
 .task.done .pts { color: var(--accent); }
 .badge {
   font-size: 11px; font-weight: 700; color: var(--amber);
