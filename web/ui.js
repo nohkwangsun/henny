@@ -365,11 +365,12 @@ function viewWorker() {
     ${tasks.length === 0
       ? '<div class="card center muted" style="padding:28px 16px">오늘은 배정된 작업이 없습니다.</div>'
       : tasks.map((t) => `
-      <button class="task ${t.doneAt ? 'done' : ''}" style="--accent:${accent}" data-act="toggle" data-id="${t.id}">
+      <button class="task ${t.doneAt ? 'done' : ''}" style="--accent:${accent}" data-act="toggle" data-id="${t.id}"
+              data-full="${esc(t.title)}">
         <span class="box">${t.doneAt ? '✓' : ''}</span>
         <span class="grow">
           <span class="title">${t.isAssignment ? '<span class="badge">임시</span>' : ''}${esc(t.title)}</span>
-          ${t.dueMinute != null ? `<br><span class="muted">${minuteToText(t.dueMinute)}까지</span>` : ''}
+          ${t.dueMinute != null ? `<span class="due">${minuteToText(t.dueMinute)}까지</span>` : ''}
         </span>
         <span class="pts ${t.points < 0 ? 'minus' : ''}">${t.points > 0 ? '+' : ''}${t.points}P</span>
       </button>`).join('')}
@@ -418,9 +419,10 @@ function viewManagerToday() {
         </div>
         ${tasks.map((t) => `<div class="row mrow" style="padding:2px 0">
           <button class="mcheck" data-act="mgr-toggle" data-id="${w.id}:${t.id}"
+                  data-full="${esc(t.title)}"
                   title="${t.doneAt ? '완료 해제' : '완료로 표시'}">
             <span class="dot ${t.doneAt ? 'on' : ''}" style="--accent:${accent}">${t.doneAt ? '✓' : ''}</span>
-            <span class="grow" style="${t.doneAt ? 'color:var(--muted);text-decoration:line-through' : ''}">${t.isAssignment ? '<span class="badge">임시</span>' : ''}${esc(t.title)}</span>
+            <span class="grow clip" style="${t.doneAt ? 'color:var(--muted);text-decoration:line-through' : ''}">${t.isAssignment ? '<span class="badge">임시</span>' : ''}${esc(t.title)}</span>
             <span class="muted" style="font-size:12px">${t.doneAt ? doneAtText(t.doneAt) + ' 완료'
               : t.dueMinute != null ? minuteToText(t.dueMinute) + '까지' : ''}</span>
             <b style="font-size:13px;color:${t.doneAt ? accent : (t.points < 0 ? 'var(--error)' : 'var(--muted)')}">${t.points > 0 ? '+' : ''}${t.points}P</b>
@@ -528,8 +530,8 @@ function viewManagerTasks() {
     ${workerChips(tasksWorker, 'pick-tasks')}
     <div class="card"><h3>정기 작업</h3>
       ${routines.length === 0 ? '<p class="muted">아직 없습니다. 아래에서 추가하세요.</p>' : ''}
-      ${routines.map((r) => `<div class="list-row">
-        <div class="grow"><b style="${r.active === false ? 'color:var(--muted)' : ''}">${esc(r.title)}</b>
+      ${routines.map((r) => `<div class="list-row" data-full="${esc(r.title)}">
+        <div class="grow"><b class="clip2" style="${r.active === false ? 'color:var(--muted)' : ''}">${esc(r.title)}</b>
           <div class="muted">${r.points ?? DEFAULT_POINTS}P · ${daysText(r.days || [])}${r.dueMinute != null ? ' · ' + minuteToText(r.dueMinute) + '까지' : ''}${r.active === false ? ' · 쉼' : ''}</div></div>
         <button class="plain" data-act="edit-routine" data-id="${r.id}">수정</button>
       </div>`).join('')}
@@ -737,6 +739,7 @@ function draw() {
     document.body.classList.toggle('has-tabs', repo.settings.setupDone && repo.settings.role === 'MANAGER');
     app.innerHTML = bodyHtml();
     bodyDirty = false;
+    hintLongPressOnce();
   }
 
   if (modalDirty) {
@@ -1181,7 +1184,66 @@ function copyText(text) {
   navigator.clipboard.writeText(text).then(() => toast('복사했습니다')).catch(legacy);
 }
 
+/**
+ * 길게 누르면 제목 전체를 띄운다.
+ *
+ * 할 일 줄은 두 줄까지만 보여 주고 나머지를 … 로 자른다. 자른 것을 볼 방법이
+ * 있어야 하는데, 이 줄을 톡 누르는 것은 이미 "완료"에 쓰이고 있어서 자리가
+ * 없다. 길게 누르기는 비어 있는 자리라 여기에 걸었다.
+ *
+ * 누르고 있는 동안 손가락이 움직이면 취소한다. 목록을 넘기려고 쓸어내린
+ * 것까지 길게 누른 것으로 읽으면 스크롤할 때마다 창이 뜬다.
+ */
+const PRESS_MS = 500;
+let pressTimer = null;
+let pressFired = false;
+
+function pressStart(ev) {
+  const el = ev.target.closest('[data-full]');
+  clearTimeout(pressTimer);
+  pressFired = false;
+  if (!el) return;
+  const full = el.dataset.full || '';
+  pressTimer = setTimeout(() => {
+    pressFired = true;
+    showFullText(full);
+  }, PRESS_MS);
+}
+
+function pressCancel() { clearTimeout(pressTimer); }
+
+function showFullText(text) {
+  if (!text) return;
+  openModal(() => modalShell('할 일 전체',
+    `<p style="font-size:17px;line-height:1.5">${esc(text)}</p>`,
+    '<button data-act="close">닫기</button>'));
+  draw();
+}
+
+/**
+ * 잘린 제목이 처음 보일 때 한 번만 알려 준다.
+ *
+ * 길게 누르기는 눌러 보기 전에는 있는지 알 수 없는 동작이다. 알려 주지
+ * 않으면 아무도 안 쓴다. 그렇다고 매번 띄우면 잔소리가 되므로 한 번만.
+ */
+function hintLongPressOnce() {
+  try {
+    if (localStorage.getItem('henny.pressHint')) return;
+  } catch (_) { return; }
+  const clipped = [...document.querySelectorAll('.task .title')]
+    .some((el) => el.scrollHeight > el.clientHeight + 1);
+  if (!clipped) return;
+  try { localStorage.setItem('henny.pressHint', '1'); } catch (_) {}
+  toast('제목이 길면 길게 눌러 전체를 볼 수 있어요');
+}
+
 function onClick(ev) {
+  if (pressFired) {          // 길게 누른 것이지 톡 누른 것이 아니다
+    pressFired = false;
+    ev.preventDefault();
+    ev.stopPropagation();
+    return;
+  }
   const target = ev.target.closest('[data-act]');
   if (!target) {
     if (ev.target.dataset.close) closeModal();
@@ -1202,6 +1264,15 @@ function onClick(ev) {
 
 app.addEventListener('click', onClick);
 modalRoot.addEventListener('click', onClick);
+
+app.addEventListener('pointerdown', pressStart);
+app.addEventListener('pointerup', pressCancel);
+app.addEventListener('pointermove', pressCancel);
+app.addEventListener('pointercancel', pressCancel);
+// 안드로이드는 길게 누르면 글자 선택이나 메뉴가 뜬다. 우리 것과 겹치므로 막는다.
+app.addEventListener('contextmenu', (ev) => {
+  if (ev.target.closest('[data-full]')) ev.preventDefault();
+});
 
 // 키보드의 완료로 저장되게 한다. 한 줄 입력하고 저장 버튼을 따로 찾아
 // 누르는 것은 손이 많이 간다.

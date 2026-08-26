@@ -228,8 +228,12 @@ await check('한쪽에서 지우면 다른 쪽에서도 지워진다', async () 
   await manager.click('[data-act="sync"]');
   await manager.waitForTimeout(1500);
   await manager.click('[data-act="tab"][data-id="TASKS"]');
-  const rows = (await html(manager)).match(/문제집 2장/g) || [];
-  if (rows.length !== 1) throw new Error(`지운 뒤 남은 작업이 ${rows.length}개다 (1개여야 함)`);
+  // HTML 원문에서 제목 문자열을 세면 안 된다. 속성에 같은 글이 한 번 더
+  // 들어가는 것만으로 개수가 늘어난다. 실제로 그렇게 깨졌다. 눈에 보이는
+  // 줄을 센다.
+  const rows = await manager.evaluate(() =>
+    [...document.querySelectorAll('.list-row')].filter((el) => el.innerText.includes('문제집 2장')).length);
+  if (rows !== 1) throw new Error(`지운 뒤 남은 작업이 ${rows}개다 (1개여야 함)`);
 });
 
 console.log('입력 다루기');
@@ -725,6 +729,108 @@ await check('진행 링의 글씨가 자릿수가 늘어도 읽힌다', async ()
     return out;
   });
   if (bad.length) throw new Error(bad.join(' / '));
+  await dev.close();
+});
+
+await check('긴 제목이 배점 위로 넘치지 않는다', async () => {
+  // 할 일 줄은 버튼인데, 버튼 기본 규칙(nowrap)이 걸려 줄바꿈을 못 하고
+  // 긴 제목이 오른쪽 배점 위로 흘러 겹쳤다. 실제 좌표로 확인한다.
+  const dev = await browser.newContext({ viewport: { width: 412, height: 915 } });
+  await dev.route(FAKE_DB + '/**', serveDb);
+  const pg = await dev.newPage();
+  await pg.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
+
+  const bad = await pg.evaluate(() => {
+    const host = document.createElement('div');
+    host.style.width = '412px';
+    document.body.appendChild(host);
+    const out = [];
+    const titles = [
+      '숙제',
+      '정시 학교루틴 (6시50분 옷.양말.가방.로션.시계)',
+      '아주아주아주긴제목을붙여도줄이안바뀌면오른쪽숫자를덮어버린다지금이경우가딱그랬다',
+    ];
+    for (const t of titles) {
+      host.innerHTML = `<button class="task" style="--accent:#0f6f60">
+        <span class="box"></span>
+        <span class="grow"><span class="title">${t}</span><span class="due">6:50까지</span></span>
+        <span class="pts">+100P</span></button>`;
+      const title = host.querySelector('.title').getBoundingClientRect();
+      const pts = host.querySelector('.pts').getBoundingClientRect();
+      if (title.right > pts.left) {
+        out.push(`"${t.slice(0, 12)}…" 제목이 배점을 ${Math.round(title.right - pts.left)}px 덮었다`);
+      }
+      // 세 줄 넘게 길어지면 줄 하나가 화면을 다 먹는다. 두 줄로 묶여야 한다.
+      // 글씨 크기가 아니라 줄 높이로 나눠야 실제 줄 수가 나온다.
+      const cs = getComputedStyle(host.querySelector('.title'));
+      const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.4;
+      const lines = title.height / lh;
+      if (lines > 2.3) out.push(`"${t.slice(0, 12)}…" 제목이 ${lines.toFixed(1)}줄로 늘어났다`);
+    }
+    host.remove();
+    return out;
+  });
+  if (bad.length) throw new Error(bad.join(' / '));
+  await dev.close();
+});
+
+await check('길게 누르면 제목 전체가 뜨고 완료는 안 된다', async () => {
+  // 이 줄을 톡 누르는 것은 이미 완료에 쓰이고 있다. 길게 누르기를 새로
+  // 얹었으니, 창이 뜨면서 완료까지 되어 버리지 않는지가 핵심이다.
+  const dev = await browser.newContext({ viewport: { width: 412, height: 915 } });
+  await dev.route(FAKE_DB + '/**', serveDb);
+  const pg = await dev.newPage();
+  await pg.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
+  const long = '정시 학교루틴 (6시50분 옷.양말.가방.로션.시계) 를 아주 길게 늘여 둔 제목';
+  await pg.evaluate(async (title) => {
+    const m = await import('./core.js');
+    const repo = new m.Repo();
+    const w = repo.addWorker('테스트');
+    repo.addRoutine(w.id, title, [1, 2, 3, 4, 5, 6, 7], null, 100);
+    repo.updateSettings({ setupDone: true, role: 'WORKER', workerId: w.id, backend: 'LOCAL' });
+  }, long);
+  await pg.reload({ waitUntil: 'networkidle' });
+
+  const row = await pg.$('[data-act="toggle"]');
+  if (!row) throw new Error('할 일 줄이 없다');
+  const box = await row.boundingBox();
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+
+  // 눌러서 600ms 버틴 뒤 뗀다. 손가락은 움직이지 않는다.
+  await pg.mouse.move(x, y);
+  await pg.mouse.down();
+  await pg.waitForTimeout(600);
+  await pg.mouse.up();
+  await pg.waitForTimeout(200);
+
+  const shown = await pg.evaluate(() => document.querySelector('#modal-root')?.textContent || '');
+  if (!shown.includes('로션')) throw new Error('제목 전체가 안 떴다: ' + shown.slice(0, 60));
+
+  const done = await pg.evaluate(() => !!document.querySelector('.task.done'));
+  if (done) throw new Error('길게 눌렀는데 완료까지 되어 버렸다');
+  await dev.close();
+});
+
+await check('짧게 누르면 그대로 완료된다', async () => {
+  // 길게 누르기를 얹느라 원래 동작이 막히면 안 된다.
+  const dev = await browser.newContext({ viewport: { width: 412, height: 915 } });
+  await dev.route(FAKE_DB + '/**', serveDb);
+  const pg = await dev.newPage();
+  await pg.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
+  await pg.evaluate(async () => {
+    const m = await import('./core.js');
+    const repo = new m.Repo();
+    const w = repo.addWorker('테스트');
+    repo.addRoutine(w.id, '숙제', [1, 2, 3, 4, 5, 6, 7], null, 100);
+    repo.updateSettings({ setupDone: true, role: 'WORKER', workerId: w.id, backend: 'LOCAL' });
+  });
+  await pg.reload({ waitUntil: 'networkidle' });
+
+  await pg.click('[data-act="toggle"]');
+  await pg.waitForTimeout(300);
+  const done = await pg.evaluate(() => !!document.querySelector('.task.done'));
+  if (!done) throw new Error('짧게 눌렀는데 완료가 안 됐다');
   await dev.close();
 });
 
