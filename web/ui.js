@@ -373,6 +373,7 @@ function viewWorker() {
           ${t.dueMinute != null ? `<span class="due">${minuteToText(t.dueMinute)}까지</span>` : ''}
         </span>
         <span class="pts ${t.points < 0 ? 'minus' : ''}">${t.points > 0 ? '+' : ''}${t.points}P</span>
+        ${seeIcon()}
       </button>`).join('')}
 
     <div class="card" style="--accent:${accent}">
@@ -426,6 +427,7 @@ function viewManagerToday() {
             <span class="muted" style="font-size:12px">${t.doneAt ? doneAtText(t.doneAt) + ' 완료'
               : t.dueMinute != null ? minuteToText(t.dueMinute) + '까지' : ''}</span>
             <b style="font-size:13px;color:${t.doneAt ? accent : (t.points < 0 ? 'var(--error)' : 'var(--muted)')}">${t.points > 0 ? '+' : ''}${t.points}P</b>
+            ${seeIcon()}
           </button>
           ${t.isAssignment ? `<button class="icon" data-act="del-assignment" data-id="${t.id}" title="배정 취소">✕</button>` : ''}
         </div>`).join('')}
@@ -533,6 +535,7 @@ function viewManagerTasks() {
       ${routines.map((r) => `<div class="list-row" data-full="${esc(r.title)}">
         <div class="grow"><b class="clip2" style="${r.active === false ? 'color:var(--muted)' : ''}">${esc(r.title)}</b>
           <div class="muted">${r.points ?? DEFAULT_POINTS}P · ${daysText(r.days || [])}${r.dueMinute != null ? ' · ' + minuteToText(r.dueMinute) + '까지' : ''}${r.active === false ? ' · 쉼' : ''}</div></div>
+        ${seeIcon()}
         <button class="plain" data-act="edit-routine" data-id="${r.id}">수정</button>
       </div>`).join('')}
       <button class="ghost" data-act="add-routine">＋ 작업 추가</button>
@@ -652,6 +655,20 @@ function viewSettings(isManager) {
  * 직접 그린 선 아이콘은 어디서나 같게 나오고, currentColor 로 색이 먹고,
  * 굵기가 통일된다. 네 개뿐이라 코드도 몇 줄이다.
  */
+/**
+ * 잘린 제목을 펼쳐 보는 아이콘.
+ *
+ * button 안에 button 을 넣을 수 없어 span 으로 둔다. 클릭 처리는 가장 안쪽
+ * data-act 를 집으므로, 이 자리를 누르면 "완료"가 아니라 "전체 보기"가 된다.
+ *
+ * 제목이 실제로 잘린 줄에만 보인다. 안 잘린 줄에까지 붙으면 목록이 시끄럽다.
+ * 잘렸는지는 그려 본 뒤에야 알 수 있어서 draw 뒤에 표시한다(markClipped).
+ */
+const seeIcon = () =>
+  `<span class="see" data-act="show-full" title="전체 보기">${
+    ico('<path d="M14 4h6v6"/><path d="M20 4l-7.5 7.5"/><path d="M10 20H4v-6"/><path d="M4 20l7.5-7.5"/>')
+  }</span>`;
+
 const ico = (paths) =>
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
@@ -739,7 +756,7 @@ function draw() {
     document.body.classList.toggle('has-tabs', repo.settings.setupDone && repo.settings.role === 'MANAGER');
     app.innerHTML = bodyHtml();
     bodyDirty = false;
-    hintLongPressOnce();
+    markClipped();
   }
 
   if (modalDirty) {
@@ -1221,20 +1238,18 @@ function showFullText(text) {
 }
 
 /**
- * 잘린 제목이 처음 보일 때 한 번만 알려 준다.
+ * 제목이 실제로 잘린 줄에만 전체 보기 아이콘을 띄운다.
  *
- * 길게 누르기는 눌러 보기 전에는 있는지 알 수 없는 동작이다. 알려 주지
- * 않으면 아무도 안 쓴다. 그렇다고 매번 띄우면 잔소리가 되므로 한 번만.
+ * 잘렸는지는 그려 본 뒤에야 안다. 두 줄로 묶은 것은 높이가 넘치고,
+ * 한 줄로 자른 것은 폭이 넘친다. 둘 다 본다.
  */
-function hintLongPressOnce() {
-  try {
-    if (localStorage.getItem('henny.pressHint')) return;
-  } catch (_) { return; }
-  const clipped = [...document.querySelectorAll('.task .title')]
-    .some((el) => el.scrollHeight > el.clientHeight + 1);
-  if (!clipped) return;
-  try { localStorage.setItem('henny.pressHint', '1'); } catch (_) {}
-  toast('제목이 길면 길게 눌러 전체를 볼 수 있어요');
+function markClipped() {
+  for (const row of document.querySelectorAll('[data-full]')) {
+    const el = row.querySelector('.title, .clip, .clip2');
+    const over = el
+      && (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1);
+    row.classList.toggle('is-clipped', !!over);
+  }
 }
 
 function onClick(ev) {
@@ -1258,6 +1273,11 @@ function onClick(ev) {
   if (act === 'del-routine-now') return deleteRoutineNow?.();
   if (act === 'points') return pointsPick?.(id);
   if (act === 'copy') { copyText(id); return; }
+  if (act === 'show-full') {
+    // 전체 글은 줄에 실려 있다. 아이콘은 그 줄 안에 있으므로 거슬러 올라가 집는다.
+    showFullText(target.closest('[data-full]')?.dataset.full || '');
+    return;
+  }
   const fn = ACTIONS[act];
   if (fn) { fn(id); draw(); }
 }
