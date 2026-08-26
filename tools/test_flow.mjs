@@ -774,6 +774,44 @@ await check('긴 제목이 배점 위로 넘치지 않는다', async () => {
   await dev.close();
 });
 
+await check('잘린 줄에만 전체 보기 아이콘이 나온다', async () => {
+  // 안 잘린 줄에까지 붙으면 목록이 시끄럽다. 잘렸는지는 그려 본 뒤에야 안다.
+  const dev = await browser.newContext({ viewport: { width: 412, height: 915 } });
+  await dev.route(FAKE_DB + '/**', serveDb);
+  const pg = await dev.newPage();
+  await pg.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
+  const long = '아주아주아주긴제목을붙여보면어떻게보이는지확인하려고넣은아주긴문장입니다정말깁니다';
+  await pg.evaluate(async (title) => {
+    const m = await import('./core.js');
+    const repo = new m.Repo();
+    const w = repo.addWorker('테스트');
+    repo.addRoutine(w.id, '숙제', [1, 2, 3, 4, 5, 6, 7], null, 100);
+    repo.addRoutine(w.id, title, [1, 2, 3, 4, 5, 6, 7], null, 100);
+    repo.updateSettings({ setupDone: true, role: 'WORKER', workerId: w.id, backend: 'LOCAL' });
+  }, long);
+  await pg.reload({ waitUntil: 'networkidle' });
+  await pg.waitForTimeout(400);
+
+  const rows = await pg.evaluate(() => [...document.querySelectorAll('.task')].map((el) => ({
+    short: el.querySelector('.title').innerText.startsWith('숙제'),
+    icon: getComputedStyle(el.querySelector('.see')).display !== 'none',
+  })));
+  const short = rows.find((r) => r.short);
+  const cut = rows.find((r) => !r.short);
+  if (!short || short.icon) throw new Error('안 잘린 줄에까지 아이콘이 붙었다');
+  if (!cut || !cut.icon) throw new Error('잘린 줄에 아이콘이 없다');
+
+  // 아이콘을 누르면 전체가 뜨고, 완료는 되지 않아야 한다.
+  await pg.click('.is-clipped .see');
+  await pg.waitForTimeout(300);
+  const shown = await pg.evaluate(() => document.querySelector('#modal-root')?.textContent || '');
+  if (!shown.includes('정말깁니다')) throw new Error('제목 전체가 안 떴다: ' + shown.slice(0, 60));
+  if (await pg.evaluate(() => !!document.querySelector('.task.done'))) {
+    throw new Error('아이콘을 눌렀는데 완료까지 되어 버렸다');
+  }
+  await dev.close();
+});
+
 await check('길게 누르면 제목 전체가 뜨고 완료는 안 된다', async () => {
   // 이 줄을 톡 누르는 것은 이미 완료에 쓰이고 있다. 길게 누르기를 새로
   // 얹었으니, 창이 뜨면서 완료까지 되어 버리지 않는지가 핵심이다.
