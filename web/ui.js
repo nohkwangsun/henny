@@ -372,8 +372,8 @@ function viewWorker() {
           <span class="title">${t.isAssignment ? '<span class="badge">임시</span>' : ''}${esc(t.title)}</span>
           ${t.dueMinute != null ? `<span class="due">${minuteToText(t.dueMinute)}까지</span>` : ''}
         </span>
-        <span class="pts ${t.points < 0 ? 'minus' : ''}">${t.points > 0 ? '+' : ''}${t.points}P</span>
         ${seeIcon()}
+        <span class="pts ${t.points < 0 ? 'minus' : ''}">${t.points > 0 ? '+' : ''}${t.points}P</span>
       </button>`).join('')}
 
     <div class="card" style="--accent:${accent}">
@@ -424,10 +424,10 @@ function viewManagerToday() {
                   title="${t.doneAt ? '완료 해제' : '완료로 표시'}">
             <span class="dot ${t.doneAt ? 'on' : ''}" style="--accent:${accent}">${t.doneAt ? '✓' : ''}</span>
             <span class="grow clip" style="${t.doneAt ? 'color:var(--muted);text-decoration:line-through' : ''}">${t.isAssignment ? '<span class="badge">임시</span>' : ''}${esc(t.title)}</span>
+            ${seeIcon()}
             <span class="muted" style="font-size:12px">${t.doneAt ? doneAtText(t.doneAt) + ' 완료'
               : t.dueMinute != null ? minuteToText(t.dueMinute) + '까지' : ''}</span>
             <b style="font-size:13px;color:${t.doneAt ? accent : (t.points < 0 ? 'var(--error)' : 'var(--muted)')}">${t.points > 0 ? '+' : ''}${t.points}P</b>
-            ${seeIcon()}
           </button>
           ${t.isAssignment ? `<button class="icon" data-act="del-assignment" data-id="${t.id}" title="배정 취소">✕</button>` : ''}
         </div>`).join('')}
@@ -656,7 +656,10 @@ function viewSettings(isManager) {
  * 굵기가 통일된다. 네 개뿐이라 코드도 몇 줄이다.
  */
 /**
- * 잘린 제목을 펼쳐 보는 아이콘.
+ * 잘린 제목을 창으로 띄워 보는 아이콘.
+ *
+ * 처음에는 네 방향 화살표로 뒀는데 무엇을 하는 자리인지 읽히지 않았다.
+ * 상자 밖으로 나가는 화살표로 바꿔 "누르면 창이 뜬다"가 보이게 한다.
  *
  * button 안에 button 을 넣을 수 없어 span 으로 둔다. 클릭 처리는 가장 안쪽
  * data-act 를 집으므로, 이 자리를 누르면 "완료"가 아니라 "전체 보기"가 된다.
@@ -666,7 +669,8 @@ function viewSettings(isManager) {
  */
 const seeIcon = () =>
   `<span class="see" data-act="show-full" title="전체 보기">${
-    ico('<path d="M14 4h6v6"/><path d="M20 4l-7.5 7.5"/><path d="M10 20H4v-6"/><path d="M4 20l7.5-7.5"/>')
+    ico('<path d="M18 13.5V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4.5"/>'
+      + '<path d="M14 4h6v6"/><path d="M20 4l-8.5 8.5"/>')
   }</span>`;
 
 const ico = (paths) =>
