@@ -774,6 +774,39 @@ await check('긴 제목이 배점 위로 넘치지 않는다', async () => {
   await dev.close();
 });
 
+await check('아이콘이 있어도 배점 오른쪽 끝이 맞는다', async () => {
+  // 아이콘을 배점 뒤에 두었더니 아이콘이 있는 줄만 배점이 왼쪽으로 밀려
+  // 오른쪽 끝이 들쭉날쭉했다. 제목 바로 뒤로 옮겨 고쳤다. 좌표로 못 박는다.
+  const dev = await browser.newContext({ viewport: { width: 412, height: 915 } });
+  await dev.route(FAKE_DB + '/**', serveDb);
+  const pg = await dev.newPage();
+  await pg.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
+  await pg.evaluate(async () => {
+    const m = await import('./core.js');
+    const repo = new m.Repo();
+    const w = repo.addWorker('하준');
+    const all = [1, 2, 3, 4, 5, 6, 7];
+    repo.addRoutine(w.id, '수학숙제', all, null, 1000);           // 안 잘림
+    repo.addRoutine(w.id, '정시 학교루틴 (6시50분 옷.양말.가방.로션.시계)', all, null, 300);  // 잘림
+    repo.addRoutine(w.id, '줄글독서 (최소1챕터)', all, null, 500);  // 안 잘림
+    repo.updateSettings({ setupDone: true, role: 'MANAGER', backend: 'LOCAL' });
+  });
+  await pg.reload({ waitUntil: 'networkidle' });
+  await pg.waitForTimeout(400);
+
+  const ends = await pg.evaluate(() => [...document.querySelectorAll('.mcheck')].map((el) => ({
+    icon: getComputedStyle(el.querySelector('.see')).display !== 'none',
+    right: Math.round(el.querySelector('b').getBoundingClientRect().right),
+  })));
+  if (ends.length < 3) throw new Error(`줄이 ${ends.length}개뿐이다`);
+  if (!ends.some((r) => r.icon) || !ends.some((r) => !r.icon)) {
+    throw new Error('아이콘 있는 줄과 없는 줄이 함께 있어야 비교가 된다');
+  }
+  const spread = Math.max(...ends.map((r) => r.right)) - Math.min(...ends.map((r) => r.right));
+  if (spread > 1) throw new Error(`배점 오른쪽 끝이 ${spread}px 어긋났다`);
+  await dev.close();
+});
+
 await check('잘린 줄에만 전체 보기 아이콘이 나온다', async () => {
   // 안 잘린 줄에까지 붙으면 목록이 시끄럽다. 잘렸는지는 그려 본 뒤에야 안다.
   const dev = await browser.newContext({ viewport: { width: 412, height: 915 } });
