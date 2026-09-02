@@ -264,6 +264,39 @@ ok('값이 없으면 안내하지 않는다', !isNewer('', '1.0.1'));
   ok('그래도 원장에는 남아 있다', r.ledgerOf(w.id).some((e) => e.delta === 700));
 }
 
+// --- 작업 순서 바꾸기
+{
+  const r = new Repo();
+  r.updateSettings({ role: 'MANAGER', setupDone: true });
+  const w = r.addWorker('순서검사');
+  const today = new Date();
+  const all = [1, 2, 3, 4, 5, 6, 7];
+  ['가', '나', '다'].forEach((t) => r.addRoutine(w.id, t, all, null, 100));
+  const titles = () => r.tasksFor(w.id, today).map((t) => t.title).join(',');
+  check('처음에는 만든 차례대로', titles(), '가,나,다');
+
+  const ids = r.plan.routines.filter((x) => x.workerId === w.id)
+    .sort((a, b) => (a.order || 0) - (b.order || 0)).map((x) => x.id);
+  r.reorderRoutines(w.id, [ids[2], ids[0], ids[1]]);
+  check('순서를 바꾸면 오늘 목록도 바뀐다', titles(), '다,가,나');
+
+  // 다른 작업자의 작업까지 건드리면 안 된다
+  const w2 = r.addWorker('남');
+  r.addRoutine(w2.id, '남의 작업', all, null, 100);
+  const before = r.plan.routines.find((x) => x.workerId === w2.id).order;
+  r.reorderRoutines(w.id, [ids[0], ids[1], ids[2]]);
+  check('남의 작업 순서는 그대로', r.plan.routines.find((x) => x.workerId === w2.id).order, before);
+
+  // 순서만 바꿨을 때 안 옮긴 항목의 시각은 그대로여야 한다.
+  // 안 그러면 다른 관리자가 방금 고친 제목을 밀어낸다.
+  const stamps = () => Object.fromEntries(r.plan.routines
+    .filter((x) => x.workerId === w.id).map((x) => [x.id, x.updatedAt]));
+  const s0 = stamps();
+  r.reorderRoutines(w.id, [ids[1], ids[0], ids[2]]);   // 앞의 둘만 맞바꿈
+  const s1 = stamps();
+  ok('안 옮긴 항목은 시각이 그대로다', s0[ids[2]] === s1[ids[2]]);
+}
+
 // --- 음수 배점 (감점 작업)
 {
   const r = new Repo();
