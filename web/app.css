@@ -46,7 +46,13 @@
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-html, body { margin: 0; padding: 0; }
+html, /* 한글은 기본값으로 두면 단어 한가운데서 줄이 바뀐다("바뀌어도" -> "바 / 뀌어도").
+   띄어쓰기에서만 끊고, 끊을 데가 없는 긴 토큰만 어쩔 수 없이 자른다. */
+body, .card, .modal { word-break: keep-all; overflow-wrap: anywhere; }
+/* 금액은 절대 쪼개지 않는다. 위 규칙 때문에 "48,200 / P" 로 잘렸다. */
+.lifetime b, .pts, .pill b { white-space: nowrap; flex: 0 0 auto; }
+
+body { margin: 0; padding: 0; }
 body {
   background: var(--bg); color: var(--ink);
   font: 16px/1.5 -apple-system, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
