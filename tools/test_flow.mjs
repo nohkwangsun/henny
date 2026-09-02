@@ -905,6 +905,57 @@ await check('짧게 누르면 그대로 완료된다', async () => {
   await dev.close();
 });
 
+await check('누적 마일리지가 오늘 화면과 통계 맨 위에 보인다', async () => {
+  // 달이 넘어가면 주·달 숫자는 0 이 된다. 그 0 을 먼저 보고 그동안 모은 것이
+  // 사라진 줄 알고 놀랐다는 이야기가 있었다. 누적이 눈에 먼저 들어와야 한다.
+  const dev = await browser.newContext({ viewport: { width: 412, height: 915 } });
+  await dev.route(FAKE_DB + '/**', serveDb);
+  const pg = await dev.newPage();
+  await pg.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
+  await pg.evaluate(async () => {
+    const m = await import('./core.js');
+    const repo = new m.Repo();
+    const w = repo.addWorker('누적검사');
+    repo.addRoutine(w.id, '숙제', [1, 2, 3, 4, 5, 6, 7], null, 100);
+    repo.adjustPoints(w.id, 48200, '지난 달까지');
+    repo.updateSettings({ setupDone: true, role: 'MANAGER', backend: 'LOCAL' });
+  });
+  await pg.reload({ waitUntil: 'networkidle' });
+  await pg.waitForTimeout(300);
+
+  // 오늘 화면
+  const today = await pg.evaluate(() => document.body.innerText);
+  if (!today.includes('48,200P')) throw new Error('오늘 화면에 누적이 없다');
+
+  // 통계 화면 — 누적이 주·달 카드보다 위에 있어야 한다
+  await pg.click('[data-act="tab"][data-id="STATS"]');
+  await pg.waitForTimeout(300);
+  const pos = await pg.evaluate(() => {
+    const cards = [...document.querySelectorAll('.card')];
+    const life = cards.find((c) => c.textContent.includes('지금까지 모은'));
+    const week = cards.find((c) => c.textContent.includes('이번 주'));
+    if (!life || !week) return null;
+    return {
+      amount: life.querySelector('b')?.textContent || '',
+      lifeTop: life.getBoundingClientRect().top,
+      weekTop: week.getBoundingClientRect().top,
+      // 금액이 두 줄로 쪼개지면 안 된다. 줄 수는 글씨 크기가 아니라
+      // 줄 높이로 나눠야 나온다. 앞서 그걸 틀려 멀쩡한 화면을 실패로 읽었다.
+      lines: (() => {
+        const el = life.querySelector('b');
+        const cs = getComputedStyle(el);
+        const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.4;
+        return el.getBoundingClientRect().height / lh;
+      })(),
+    };
+  });
+  if (!pos) throw new Error('통계에 누적 카드나 주간 카드가 없다');
+  if (pos.amount !== '48,200P') throw new Error(`금액 표시가 이상하다: ${pos.amount}`);
+  if (pos.lifeTop >= pos.weekTop) throw new Error('누적이 주간 카드보다 아래에 있다');
+  if (pos.lines > 1.4) throw new Error('금액이 두 줄로 쪼개졌다');
+  await dev.close();
+});
+
 await check('앱에 넘길 알람 일정이 만들어진다', async () => {
   // 검사가 요일과 시각에 휘둘리지 않도록 입력을 직접 만든다.
   //

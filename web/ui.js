@@ -46,6 +46,9 @@ let update = null;
 
 // ------------------------------------------------------------------ 도구
 
+/** 자릿점을 찍는다. 누적 마일리지는 금방 다섯 자리가 되어 읽기 힘들어진다. */
+const won = (n) => Number(n || 0).toLocaleString('ko-KR');
+
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -380,7 +383,7 @@ function viewWorker() {
       ${pills([['오늘 모음', earned + 'P'], ['이번 주', week.points + 'P'], ['연속', repo.streak(s.workerId) + '일']], accent)}
       <div class="spread tappable" style="margin-top:14px" data-act="ledger" data-id="${esc(s.workerId)}">
         <span class="muted">지금까지 모은 마일리지</span>
-        <b style="font-size:20px;color:${accent}">${repo.lifetimePoints(s.workerId)}P</b>
+        <b style="font-size:20px;color:${accent}">${won(repo.lifetimePoints(s.workerId))}P</b>
       </div>
     </div>
 
@@ -414,7 +417,10 @@ function viewManagerToday() {
             <h2>${esc(w.name)}</h2>
             <div class="muted">${tasks.length === 0 ? '오늘 배정된 작업이 없습니다'
               : done.length === tasks.length ? '오늘 작업 모두 완료' : `${tasks.length - done.length}개 남음`}${
-              tasks.length ? ` · ${earned}/${offered}P` : ''}</div>
+              tasks.length ? ` · 오늘 ${earned}/${offered}P` : ''}</div>
+            <!-- 이 화면에는 오늘 숫자밖에 없었다. 하루가 끝나면 0 으로 돌아가는
+                 값만 보이니 그동안 모은 것이 어디에도 안 보였다. -->
+            <div class="muted" style="font-size:13px">누적 <b style="color:${accent}">${won(repo.lifetimePoints(w.id))}P</b></div>
           </div>
           ${tasks.length ? ring(done.length, tasks.length, accent, 76) : ''}
         </div>
@@ -493,6 +499,21 @@ function viewManagerStats() {
   return `<h1>통계</h1>
     ${workerChips(statsWorker, 'pick-stats')}
 
+    <!-- 누적을 맨 위에 둔다. 아래 카드들은 주·달 단위라 기간이 바뀌면 0 이
+         되는데, 그 0 을 먼저 보면 그동안 모은 것이 사라진 줄 안다.
+         실제로 달이 넘어간 아침에 그렇게 놀랐다는 이야기를 들었다. -->
+    <div class="card lifetime" style="--accent:${accent}">
+      <div class="spread">
+        <div><h3 style="margin:0">지금까지 모은 마일리지</h3>
+          <div class="muted">달이 바뀌어도 줄지 않는 전체 합계입니다.</div></div>
+        <b style="font-size:26px;color:${accent}">${won(repo.lifetimePoints(statsWorker))}P</b>
+      </div>
+      <div class="row" style="margin-top:12px;gap:8px">
+        <button class="ghost grow" data-act="ledger" data-id="${statsWorker}">내역</button>
+        <button class="grow" data-act="give-points" data-id="${statsWorker}">주기 · 쓰기</button>
+      </div>
+    </div>
+
     <div class="card" style="--accent:${accent}">
       ${periodHead(weekLabel, 'week-move', weekOffset < 0)}
       ${tooOld ? '<p class="muted">150일이 지난 기록은 일별로 남기지 않습니다. 아래 월별 합계로 보세요.</p>' : ''}
@@ -510,16 +531,6 @@ function viewManagerStats() {
         : `<div class="hint">전체 ${month.total}개 중 ${month.done}개 완료</div>`}
     </div>
 
-    <div class="card" style="--accent:${accent}">
-      <div class="spread">
-        <div><h3 style="margin:0">모은 마일리지</h3>
-          <div class="muted">작업으로 쌓인 것과 직접 조정한 것을 모두 더한 값입니다.</div></div>
-        <b style="font-size:26px;color:${accent}">${repo.lifetimePoints(statsWorker)}P</b>
-      </div>
-      <div class="row" style="margin-top:12px;gap:8px">
-        <button class="ghost grow" data-act="ledger" data-id="${statsWorker}">내역</button>
-        <button class="grow" data-act="give-points" data-id="${statsWorker}">주기 · 쓰기</button>
-      </div>
     </div>`;
 }
 
@@ -574,7 +585,7 @@ function viewSettings(isManager) {
       ${repo.plan.workers.map((w) => `<div class="list-row">
         <div class="grow tappable" data-act="rename-worker" data-id="${w.id}">
           <div class="grow"><b>${esc(w.name)}</b>
-            <div class="muted">${s.progressBins[w.id] ? '연결됨' : '저장 공간 없음'} · ${repo.lifetimePoints(w.id)}P</div></div></div>
+            <div class="muted">${s.progressBins[w.id] ? '연결됨' : '저장 공간 없음'} · ${won(repo.lifetimePoints(w.id))}P</div></div></div>
         <button class="plain" data-act="show-code" data-id="${w.id}">연결 코드</button>
         <button class="danger" data-act="del-worker" data-id="${w.id}">삭제</button>
       </div>`).join('')}
@@ -1019,7 +1030,7 @@ function dayButtons(days) {
 function openAdjustModal(workerId) {
   const ADJUST = [-500, -200, -100, 100, 200, 500];
   openModal(() => modalShell(`${repo.workerName(workerId)}의 마일리지`,
-    `<p class="muted">지금 <b>${repo.lifetimePoints(workerId)}P</b> 모았습니다.</p>
+    `<p class="muted">지금 <b>${won(repo.lifetimePoints(workerId))}P</b> 모았습니다.</p>
      <div class="stack">
        <div><span class="muted">얼마나</span>
          <div class="chips" style="margin:6px 0 8px">${ADJUST.map((v) =>
@@ -1046,7 +1057,7 @@ function openLedgerModal(workerId) {
   const rows = repo.ledgerOf(workerId, 60);
   openModal(() => modalShell(`${repo.workerName(workerId)}의 마일리지 내역`,
     rows.length === 0 ? '<p class="muted">아직 내역이 없습니다.</p>'
-      : `<p class="muted">지금 <b>${repo.lifetimePoints(workerId)}P</b> · 최근 ${rows.length}건</p>
+      : `<p class="muted">지금 <b>${won(repo.lifetimePoints(workerId))}P</b> · 최근 ${rows.length}건</p>
          <div class="ledger">${rows.map((e) => {
            const d = e.at ? new Date(e.at) : null;
            return `<div class="list-row">

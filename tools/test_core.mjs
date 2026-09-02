@@ -249,6 +249,19 @@ ok('값이 없으면 안내하지 않는다', !isNewer('', '1.0.1'));
     days: { ...p.days, [old]: { date: old, items: [], updatedAt: 1 } },
   });
   check('오래된 기록을 정리해도 잔액은 그대로', r.lifetimePoints(w.id), 600);
+
+  // 위 검사는 빈 날짜로만 확인해서, 정작 "점수를 딴 옛 날짜가 접히는" 경우를
+  // 보지 못했다. 달이 넘어가면 겪는 것이 바로 그 경우다.
+  const oldDay = addDays(today, -200);
+  r.addRoutine(w.id, '옛 작업', [isoDow(oldDay)], null, 700);
+  const oldTask = r.tasksFor(w.id, oldDay).find((x) => x.title === '옛 작업');
+  ok('옛 날짜에도 작업이 잡힌다', !!oldTask);
+  r.toggle(w.id, oldDay, oldTask.id);
+  check('점수를 딴 옛 날짜가 접혀도 누적은 그대로', r.lifetimePoints(w.id), 1300);
+
+  // 접힌 뒤에도 일별 기록은 사라지고 원장만 남아야 한다.
+  ok('옛 날짜는 정리되어 사라진다', !r.progressOf(w.id).days[dateKey(oldDay)]);
+  ok('그래도 원장에는 남아 있다', r.ledgerOf(w.id).some((e) => e.delta === 700));
 }
 
 // --- 음수 배점 (감점 작업)
