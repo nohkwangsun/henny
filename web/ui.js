@@ -543,12 +543,18 @@ function viewManagerTasks() {
     ${workerChips(tasksWorker, 'pick-tasks')}
     <div class="card"><h3>정기 작업</h3>
       ${routines.length === 0 ? '<p class="muted">아직 없습니다. 아래에서 추가하세요.</p>' : ''}
-      ${routines.map((r) => `<div class="list-row" data-full="${esc(r.title)}">
+      <div id="routine-list">
+      ${routines.map((r) => `<div class="list-row" data-full="${esc(r.title)}"
+             data-reorder="1" data-rid="${r.id}">
+        <span class="handle" aria-hidden="true">${
+          ico('<path d="M5 7.5h14"/><path d="M5 12h14"/><path d="M5 16.5h14"/>')}</span>
         <div class="grow"><b class="clip2" style="${r.active === false ? 'color:var(--muted)' : ''}">${esc(r.title)}</b>
           <div class="muted">${r.points ?? DEFAULT_POINTS}P · ${daysText(r.days || [])}${r.dueMinute != null ? ' · ' + minuteToText(r.dueMinute) + '까지' : ''}${r.active === false ? ' · 쉼' : ''}</div></div>
         ${seeIcon()}
         <button class="plain" data-act="edit-routine" data-id="${r.id}">수정</button>
       </div>`).join('')}
+      </div>
+      ${routines.length > 1 ? '<p class="hint">꾹 눌러 위아래로 끌면 순서가 바뀝니다. 이 순서대로 오늘 할 일에 나옵니다.</p>' : ''}
       <button class="ghost" data-act="add-routine">＋ 작업 추가</button>
     </div>
     <div class="card"><h3>점검 알림</h3>
@@ -763,7 +769,9 @@ function isTyping() {
  * 두었다가, 입력이 끝나면 그때 반영한다. 모달은 열고 닫을 때만 그린다.
  */
 function draw() {
-  if (modal || isTyping()) {
+  // 끄는 중에 다시 그리면 끌고 있던 줄이 통째로 사라진다. 15초마다 도는
+  // 동기화가 하필 그때 끼어들 수 있다.
+  if (modal || isTyping() || drag) {
     bodyDirty = true;
   } else {
     // 탭바는 관리자 화면에만 있다. 작업자 화면에서도 탭바 높이만큼 비워
@@ -1231,9 +1239,18 @@ let pressTimer = null;
 let pressFired = false;
 
 function pressStart(ev) {
-  const el = ev.target.closest('[data-full]');
   clearTimeout(pressTimer);
   pressFired = false;
+
+  // 순서를 바꿀 수 있는 목록에서는 꾹 누르기가 "끌기"다. 같은 동작에 두 가지를
+  // 걸 수 없으므로, 그 목록에서 전체 보기는 아이콘만 맡는다.
+  const row = ev.target.closest('[data-reorder]');
+  if (row) {
+    pressTimer = setTimeout(() => { pressFired = true; dragStart(row); }, PRESS_MS);
+    return;
+  }
+
+  const el = ev.target.closest('[data-full]');
   if (!el) return;
   const full = el.dataset.full || '';
   pressTimer = setTimeout(() => {
@@ -1243,6 +1260,59 @@ function pressStart(ev) {
 }
 
 function pressCancel() { clearTimeout(pressTimer); }
+
+/*
+ * 꾹 눌러 끌어 순서 바꾸기.
+ *
+ * 끄는 동안 화면이 같이 스크롤되면 아무것도 못 한다. 그런데 touch-action 은
+ * 손가락이 닿는 순간 정해져서, 끌기가 시작된 뒤에 바꿔 봐야 이미 늦다.
+ * 그래서 touchmove 를 passive:false 로 받아 직접 막는다. 꾹 누르는 동안
+ * 손가락이 멈춰 있었으므로 스크롤이 아직 시작되지 않아 이 방법이 통한다.
+ *
+ * 끌리는 줄을 따로 띄우지 않고, 지나칠 때마다 목록 안에서 자리를 바꾼다.
+ * 눈으로 결과가 바로 보이고 좌표 계산이 단순하다.
+ */
+let drag = null;
+
+function dragStart(row) {
+  drag = { row, list: row.parentElement };
+  row.classList.add('dragging');
+  document.body.classList.add('dragging-row');
+}
+
+function dragMove(ev) {
+  if (!drag) return;
+  const y = ev.clientY;
+  const rows = [...drag.list.querySelectorAll('[data-reorder]')];
+  const others = rows.filter((el) => el !== drag.row);
+  if (!others.length) return;
+
+  // 목록 밖으로 넘어간 경우. 맨 위로 올리려다 조금 지나치면 아무 일도
+  // 일어나지 않아서, 손가락을 계속 올려도 안 올라가는 것처럼 보였다.
+  const top = others[0].getBoundingClientRect();
+  const bottom = others[others.length - 1].getBoundingClientRect();
+  if (y < top.top) return drag.list.insertBefore(drag.row, others[0]);
+  if (y > bottom.bottom) return drag.list.insertBefore(drag.row, null);
+
+  const over = others.find((el) => {
+    const r = el.getBoundingClientRect();
+    return y >= r.top && y <= r.bottom;
+  });
+  if (!over) return;
+  const r = over.getBoundingClientRect();
+  const above = y < r.top + r.height / 2;
+  drag.list.insertBefore(drag.row, above ? over : over.nextSibling);
+}
+
+function dragEnd() {
+  if (!drag) return;
+  const ids = [...drag.list.querySelectorAll('[data-reorder]')].map((el) => el.dataset.rid);
+  drag.row.classList.remove('dragging');
+  document.body.classList.remove('dragging-row');
+  drag = null;
+  repo.reorderRoutines(tasksWorker, ids);
+  draw();
+}
 
 function showFullText(text) {
   if (!text) return;
@@ -1301,9 +1371,14 @@ app.addEventListener('click', onClick);
 modalRoot.addEventListener('click', onClick);
 
 app.addEventListener('pointerdown', pressStart);
-app.addEventListener('pointerup', pressCancel);
-app.addEventListener('pointermove', pressCancel);
-app.addEventListener('pointercancel', pressCancel);
+app.addEventListener('pointerup', (ev) => { pressCancel(ev); dragEnd(); });
+app.addEventListener('pointermove', (ev) => {
+  if (drag) dragMove(ev); else pressCancel(ev);
+});
+app.addEventListener('pointercancel', (ev) => { pressCancel(ev); dragEnd(); });
+// 끄는 동안 화면이 따라 스크롤되지 않게 한다. passive 가 아니어야 막을 수 있다.
+document.addEventListener('touchmove', (ev) => { if (drag) ev.preventDefault(); },
+  { passive: false });
 // 안드로이드는 길게 누르면 글자 선택이나 메뉴가 뜬다. 우리 것과 겹치므로 막는다.
 app.addEventListener('contextmenu', (ev) => {
   if (ev.target.closest('[data-full]')) ev.preventDefault();

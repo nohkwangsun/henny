@@ -598,6 +598,28 @@ export class Repo {
     });
   }
 
+  /**
+   * 정기 작업의 순서를 다시 매긴다.
+   *
+   * 순서는 항목마다 붙은 order 하나로 정해진다. 옮긴 것만 고치려 하면 1 과 2
+   * 사이에 끼울 때 소수점이 필요해진다. 한 작업자의 작업이 많아야 열몇 개라
+   * 통째로 1,2,3... 으로 다시 매기는 편이 단순하고 값도 깔끔하다.
+   *
+   * 값이 그대로인 항목은 stampPlan 이 시각을 건드리지 않으므로, 순서를 바꿨다고
+   * 해서 다른 관리자가 방금 고친 제목이나 배점을 밀어내지 않는다.
+   */
+  reorderRoutines(workerId, orderedIds) {
+    const rank = new Map(orderedIds.map((id, i) => [id, i + 1]));
+    this.mutatePlan((p) => ({
+      ...p,
+      routines: p.routines.map((r) => (
+        r.workerId === workerId && rank.has(r.id) && r.order !== rank.get(r.id)
+          ? { ...r, order: rank.get(r.id) }
+          : r
+      )),
+    }));
+  }
+
   updateRoutine(routine) {
     this.mutatePlan((p) => ({ ...p, routines: p.routines.map((r) => (r.id === routine.id ? routine : r)) }));
   }

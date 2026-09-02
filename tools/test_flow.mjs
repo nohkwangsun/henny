@@ -956,6 +956,84 @@ await check('누적 마일리지가 오늘 화면과 통계 맨 위에 보인다
   await dev.close();
 });
 
+await check('꾹 눌러 끌면 작업 순서가 바뀌고 저장된다', async () => {
+  // 손가락으로 하는 동작이라 코드만 봐서는 되는지 알 수 없다. 실제로 누르고
+  // 끌어 본다. 화면에서 자리가 바뀌는 것만으로는 모자라고, 다시 읽었을 때도
+  // 그대로여야 저장된 것이다.
+  const dev = await browser.newContext({ viewport: { width: 412, height: 915 } });
+  await dev.route(FAKE_DB + '/**', serveDb);
+  const pg = await dev.newPage();
+  await pg.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
+  await pg.evaluate(async () => {
+    const m = await import('./core.js');
+    const repo = new m.Repo();
+    const w = repo.addWorker('순서');
+    const all = [1, 2, 3, 4, 5, 6, 7];
+    ['가', '나', '다', '라'].forEach((t) => repo.addRoutine(w.id, t, all, null, 100));
+    repo.updateSettings({ setupDone: true, role: 'MANAGER', backend: 'LOCAL' });
+  });
+  await pg.reload({ waitUntil: 'networkidle' });
+  await pg.click('[data-act="tab"][data-id="TASKS"]');
+  await pg.waitForTimeout(300);
+
+  const titles = () => pg.evaluate(() =>
+    [...document.querySelectorAll('[data-rid] b')].map((b) => b.textContent).join(','));
+  if (await titles() !== '가,나,다,라') throw new Error('처음 순서가 다르다: ' + await titles());
+
+  // 맨 아래를 꾹 눌러 목록 위로 끈다
+  const rows = await pg.$$('[data-rid]');
+  const last = await rows[3].boundingBox();
+  const first = await rows[0].boundingBox();
+  await pg.mouse.move(last.x + 30, last.y + last.height / 2);
+  await pg.mouse.down();
+  await pg.waitForTimeout(650);              // 꾹 누르는 시간
+  for (let i = 1; i <= 12; i++) {
+    await pg.mouse.move(last.x + 30,
+      last.y + last.height / 2 + (first.y - 40 - last.y) * (i / 12));
+    await pg.waitForTimeout(20);
+  }
+  await pg.mouse.up();
+  await pg.waitForTimeout(300);
+  if (await titles() !== '라,가,나,다') throw new Error('끈 뒤 순서가 다르다: ' + await titles());
+
+  // 다시 읽어도 그대로여야 한다
+  await pg.reload({ waitUntil: 'networkidle' });
+  await pg.click('[data-act="tab"][data-id="TASKS"]');
+  await pg.waitForTimeout(300);
+  if (await titles() !== '라,가,나,다') throw new Error('저장이 안 됐다: ' + await titles());
+
+  // 오늘 화면도 같은 순서여야 한다. 순서를 바꾸는 이유가 그것이다.
+  await pg.click('[data-act="tab"][data-id="TODAY"]');
+  await pg.waitForTimeout(300);
+  const today = await pg.evaluate(() =>
+    [...document.querySelectorAll('.mcheck .grow')].map((e) => e.innerText.trim()).join(','));
+  if (today !== '라,가,나,다') throw new Error('오늘 화면 순서가 다르다: ' + today);
+  await dev.close();
+});
+
+await check('짧게 누르면 끌기가 아니라 수정이다', async () => {
+  // 꾹 누르기에 끌기를 얹었다고 원래 동작이 막히면 안 된다.
+  const dev = await browser.newContext({ viewport: { width: 412, height: 915 } });
+  await dev.route(FAKE_DB + '/**', serveDb);
+  const pg = await dev.newPage();
+  await pg.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
+  await pg.evaluate(async () => {
+    const m = await import('./core.js');
+    const repo = new m.Repo();
+    const w = repo.addWorker('순서');
+    ['가', '나'].forEach((t) => repo.addRoutine(w.id, t, [1, 2, 3, 4, 5, 6, 7], null, 100));
+    repo.updateSettings({ setupDone: true, role: 'MANAGER', backend: 'LOCAL' });
+  });
+  await pg.reload({ waitUntil: 'networkidle' });
+  await pg.click('[data-act="tab"][data-id="TASKS"]');
+  await pg.waitForTimeout(300);
+  await pg.click('[data-act="edit-routine"]');
+  await pg.waitForTimeout(300);
+  const open = await pg.evaluate(() => (document.querySelector('#modal-root')?.textContent || ''));
+  if (!open.includes('작업')) throw new Error('수정 창이 안 떴다: ' + open.slice(0, 40));
+  await dev.close();
+});
+
 await check('앱에 넘길 알람 일정이 만들어진다', async () => {
   // 검사가 요일과 시각에 휘둘리지 않도록 입력을 직접 만든다.
   //

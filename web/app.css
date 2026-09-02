@@ -173,6 +173,23 @@ label.field > span { display: block; font-size: 13px; color: var(--muted); margi
 /* 한 줄짜리 자리(관리자 카드의 촘촘한 목록)는 한 줄로 자른다. */
 .clip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* 꾹 눌러 끌어 순서 바꾸기 */
+.list-row[data-reorder] { touch-action: pan-y; }
+.handle {
+  display: grid; place-items: center; flex: 0 0 auto;
+  width: 24px; height: 24px; color: var(--muted); margin-left: -4px;
+}
+.handle svg { width: 18px; height: 18px; }
+.list-row.dragging {
+  background: var(--surface); border-radius: var(--r-sm);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .18);
+  transform: scale(1.02); position: relative; z-index: 2;
+  /* 끄는 동안에는 이 줄에서 스크롤이 시작되지 않게 한다. */
+  touch-action: none;
+}
+/* 끄는 동안 글자가 잡히면 손잡이가 뜨고 선택이 되어 엉킨다. */
+body.dragging-row { user-select: none; -webkit-user-select: none; }
+
 /* 전체 보기 아이콘. 제목이 실제로 잘린 줄에만 나타난다(.is-clipped).
    안 잘린 줄에까지 붙으면 목록이 시끄럽다. */
 .see { display: none; }
